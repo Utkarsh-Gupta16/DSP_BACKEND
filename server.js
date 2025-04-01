@@ -22,7 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+app.use(cors({ origin: "https://dataselling.netlify.app/", credentials: true }));
 app.use(express.json({ limit: "10mb" })); // Increase to 10MB
 app.use(fileUpload());
 app.use(
