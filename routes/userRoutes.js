@@ -97,20 +97,38 @@ router.post("/login", async (req, res) => {
 // Google OAuth Routes (Server-side flow)
 router.get(
   "/google",
+  (req, res, next) => {
+    console.log("Initiating Google OAuth flow");
+    console.log("Environment:", process.env.NODE_ENV);
+    console.log("Redirect URI:", process.env.NODE_ENV === "production" ? "https://dsp-backend.onrender.com/api/users/google/callback" : "http://localhost:5000/api/users/google/callback");
+    console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+    next();
+  },
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
 router.get(
   "/google/callback",
-  passport.authenticate("google", { session: false }),
+  (req, res, next) => {
+    console.log("Google OAuth callback received");
+    console.log("Query parameters:", req.query);
+    next();
+  },
+  passport.authenticate("google", { session: false, failureRedirect: "https://dataselling.netlify.app/login?error=auth-failed" }),
   (req, res) => {
+    console.log("Google OAuth callback successful");
     const user = req.user;
     const token = user.getJWTToken();
-    console.log("Google auth callback successful, user:", user.email, "Token:", token);
-    res.json({
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
+    console.log("User:", user.email, "Token:", token);
+
+    // Redirect to frontend with token and user data
+    const redirectUrl = `https://dataselling.netlify.app/auth/callback?token=${token}&userId=${user._id}&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(user.email)}&role=${user.role}`;
+    console.log("Redirecting to:", redirectUrl);
+    res.redirect(redirectUrl);
+  },
+  (err, req, res, next) => {
+    console.error("Google OAuth callback error:", err.message);
+    res.redirect("https://dataselling.netlify.app/login?error=auth-failed");
   }
 );
 
