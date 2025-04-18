@@ -35,6 +35,10 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    approvedCompanies: { 
+      type: Number, default: 0 
+    }, // Add this field
+    addOns: [String],
     price: {
       type: Number,
       required: true,

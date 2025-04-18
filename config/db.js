@@ -1,4 +1,3 @@
-// config/db.js
 import mongoose from "mongoose";
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/DataSellingProject";
@@ -14,12 +13,11 @@ export const connectDB = async () => {
     const db = mongoose.connection;
     const sourceCollection = db.collection("businessdatabase");
 
-    // Ensure indexes for fast grouping
     await sourceCollection.createIndex({ "Business Name": 1, "Address": 1, "Phone": 1 });
     console.log("🔄 Indexing Done.");
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1); // Exit the process on failure
+    process.exit(1); 
   }
 };
 

@@ -9,10 +9,16 @@ const companySchema = new mongoose.Schema(
     State: { type: String, required: true, index: true },
     City: { type: String, required: true, index: true },
     phone: { type: String, required: true },
-    category: { type: String, required: true, index: true }, // Top-level category
-    subcategory: { type: String, index: true }, // Second-level category
-    Categories: { type: String, index: true }, // Sub-subcategory (renamed from categories)
-    Country: { type: String, index: true }, // Country field
+    category: { type: String, required: true, index: true },
+    subcategory: { type: String, index: true },
+    Categories: { type: String, index: true },
+    Country: { type: String, index: true },
+    companyDetails: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CompanyDetails",
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -20,16 +26,14 @@ const companySchema = new mongoose.Schema(
   }
 );
 
-// Compound indexes for hierarchical filtering
 companySchema.index(
-  { category: 1, subcategory: 1, Categories: 1 }, // Updated to Categories
+  { category: 1, subcategory: 1, Categories: 1 },
   { background: true }
 );
 
-// Compound index for location-based filtering
 companySchema.index(
   { Country: 1, State: 1, City: 1 },
   { background: true }
 );
 
-export const Company = mongoose.model("Company", companySchema);
+export const Company = mongoose.model("Company", companySchema, "companies");

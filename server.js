@@ -7,8 +7,8 @@ import session from "express-session";
 import GoogleStrategy from "passport-google-oauth20";
 import fileUpload from "express-fileupload";
 
-// Import Routes
 import userRoutes from "./routes/userRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import dataRoutes from "./routes/dataRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js";
@@ -16,29 +16,41 @@ import emailRoutes from "./routes/emailRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import countRoutes from "./routes/countRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
-
-// Load Environment Variables
+import adminEmailRoutes from "./routes/adminEmailRoutes.js";
+import companyDetailsRoutes from "./routes/companyDetailsRoutes.js";
+import demoRoutes from "./routes/demoRoutes.js"; // Add this line
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors({ origin: "https://dataselling.netlify.app", credentials: true }));
-app.use(express.json({ limit: "10mb" })); // Increase payload size limit
+app.use((req, res, next) => {
+  console.log(`Incoming request: ${req.method} ${req.url}`);
+  next();
+});
+
+app.use(
+  cors({
+    origin: [
+      "https://dataselling.netlify.app",
+      "http://localhost:3000", 
+    ],
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: "10mb" })); 
 app.use(fileUpload());
 app.use(
   session({
     secret: process.env.JWT_SECRET_KEY || "fallback-secret",
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === "production" }, // Enable secure cookies in production
+    cookie: { secure: process.env.NODE_ENV === "production" }, 
   })
 );
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Passport Google Strategy
 passport.use(
   new GoogleStrategy(
     {
@@ -81,6 +93,7 @@ passport.deserializeUser(async (id, done) => {
 
 // Routes
 app.use("/api/users", userRoutes);
+app.use("/api/auth", authRoutes); 
 app.use("/api/admin", adminRoutes);
 app.use("/api/companies", dataRoutes);
 app.use("/api/employees", employeeRoutes);
@@ -88,13 +101,14 @@ app.use("/api/email", emailRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use(countRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/company-details", companyDetailsRoutes);
+app.use("/api/admin/email", adminEmailRoutes)
+app.use("/api/demo", demoRoutes); // Add this line
 
-// Fallback Route for Unmatched Paths
 app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// Connect to MongoDB
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI, {
