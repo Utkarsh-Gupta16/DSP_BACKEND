@@ -43,18 +43,32 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     const companyObjectId = new mongoose.Types.ObjectId(companyId);
     console.log("Converted companyId to ObjectId:", companyObjectId);
     console.log("Executing findById query with:", companyObjectId);
-    const company = await Company.findById(companyObjectId);
+    let company = await Company.findById(companyObjectId);
     console.log("Query result:", company);
 
+    // Fallback to raw query if Mongoose fails
     if (!company) {
-      // Fall back to raw query for debugging
+      console.log("Mongoose findById failed, trying raw query...");
       const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyObjectId });
       console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
         console.log("Company not found in raw query for ObjectId:", companyObjectId);
         return res.status(404).json({ message: "Company not found" });
       } else {
-        console.log("Found in raw query but not in Mongoose, possible schema mismatch");
+        // Map raw data to schema-expected fields manually
+        company = new Company({
+          _id: rawCompany._id,
+          businessName: rawCompany["Business Name"],
+          originUrl: rawCompany["Origin URL"],
+          companyUrl: rawCompany["Company URL"],
+          address: rawCompany.Address,
+          State: rawCompany.State,
+          City: rawCompany.City,
+          phone: rawCompany.Phone,
+          category: rawCompany.category || rawCompany.Categories, // Handle potential mismatch
+          subcategory: rawCompany.subcategory,
+          Country: rawCompany.Country,
+        });
       }
     }
 
