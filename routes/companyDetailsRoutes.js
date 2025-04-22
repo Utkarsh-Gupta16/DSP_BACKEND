@@ -286,25 +286,26 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
 
     const transformedHistory = await Promise.all(history.map(async (record) => {
       const company = record.companyId || { _id: record.companyId };
-      let businessName = `Unknown (ID: ${company._id})`;
+      let businessName = `Unknown (ID: ${company._id || 'N/A'})`;
 
       if (company._id) {
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-        businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
+        businessName = rawCompany && (rawCompany["Business Name"] || rawCompany.businessName) ? 
+          (rawCompany["Business Name"] || rawCompany.businessName) : businessName;
       }
 
       return {
         _id: record._id,
         company: {
           _id: company._id,
-          businessName: businessName // Consistent field name
+          businessName: businessName
         },
         submittedDate: record.submittedDate,
         status: record.status,
         approvedAt: record.approvedAt,
         formData: record.formData
       };
-    })); // Added missing closing parenthesis here
+    }));
 
     res.status(200).json(transformedHistory);
   } catch (error) {
