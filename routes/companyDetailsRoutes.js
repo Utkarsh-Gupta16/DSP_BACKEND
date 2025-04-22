@@ -35,12 +35,16 @@ const sendEmail = async (options) => {
 // Submit Company Details (Employee)
 router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
+    console.log("Request body:", req.body); // Add this line for debugging
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
     // Validate companyId exists
-    const company = await Company.findById(companyId);
+    const companyObjectId = new mongoose.Types.ObjectId(companyId); // Convert to ObjectId
+    console.log("Converted companyId to ObjectId:", companyObjectId);
+    const company = await Company.findById(companyObjectId);
     if (!company) {
+      console.log("Company not found for ObjectId:", companyObjectId);
       return res.status(404).json({ message: "Company not found" });
     }
 
@@ -61,7 +65,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     }
 
     const companyDetails = new CompanyDetails({
-      companyId,
+      companyId: companyObjectId, // Use the converted ObjectId
       employeeId,
       orderId,
       formData: details,
@@ -72,7 +76,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       .status(201)
       .json({ message: "Company details submitted for approval.", companyDetails });
   } catch (error) {
-    console.error("Error submitting company details:", error.message);
+    console.error("Error submitting company details:", error.message, error.stack);
     res
       .status(500)
       .json({ message: "Failed to submit company details", error: error.message });
