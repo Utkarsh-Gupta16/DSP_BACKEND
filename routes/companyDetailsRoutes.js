@@ -1,4 +1,3 @@
-// companyDetailsRoutes.js
 import express from "express";
 import { authenticateToken, checkAdminRole } from "../middleware/authMiddleware.js";
 import CompanyDetails from "../models/companyDetailsModel.js";
@@ -104,6 +103,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       .json({ message: "Failed to submit company details", error: error.message });
   }
 });
+
 // Get Pending Company Details for Admin Approval
 router.get("/pending-approvals", authenticateToken, async (req, res) => {
   try {
@@ -153,6 +153,7 @@ router.get("/pending-approvals", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Failed to fetch pending approvals", error: error.message });
   }
 });
+
 // Approve or Reject Company Details (Admin)
 router.put("/approve-company-details/:id", authenticateToken, checkAdminRole, async (req, res) => {
   try {
@@ -303,7 +304,7 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
         approvedAt: record.approvedAt,
         formData: record.formData
       };
-    });
+    })); // Added missing closing parenthesis here
 
     res.status(200).json(transformedHistory);
   } catch (error) {
@@ -311,6 +312,7 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
     res.status(500).json({ message: "Failed to fetch history", error: error.message });
   }
 });
+
 router.get("/submitted-companies", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
