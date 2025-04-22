@@ -35,17 +35,27 @@ const sendEmail = async (options) => {
 // Submit Company Details (Employee)
 router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
-    console.log("Request body:", req.body); // Add this line for debugging
+    console.log("Request body:", req.body); // Debug log
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
     // Validate companyId exists
-    const companyObjectId = new mongoose.Types.ObjectId(companyId); // Convert to ObjectId
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
     console.log("Converted companyId to ObjectId:", companyObjectId);
+    console.log("Executing findById query with:", companyObjectId);
     const company = await Company.findById(companyObjectId);
+    console.log("Query result:", company);
+
     if (!company) {
-      console.log("Company not found for ObjectId:", companyObjectId);
-      return res.status(404).json({ message: "Company not found" });
+      // Fall back to raw query for debugging
+      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyObjectId });
+      console.log("Raw query result:", rawCompany);
+      if (!rawCompany) {
+        console.log("Company not found in raw query for ObjectId:", companyObjectId);
+        return res.status(404).json({ message: "Company not found" });
+      } else {
+        console.log("Found in raw query but not in Mongoose, possible schema mismatch");
+      }
     }
 
     // Validate orderId exists
@@ -65,7 +75,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     }
 
     const companyDetails = new CompanyDetails({
-      companyId: companyObjectId, // Use the converted ObjectId
+      companyId: companyObjectId,
       employeeId,
       orderId,
       formData: details,
