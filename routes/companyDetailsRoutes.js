@@ -35,24 +35,23 @@ const sendEmail = async (options) => {
 // Submit Company Details (Employee)
 router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
-    console.log("Request body:", req.body); // Debug log
+    console.log("Connected database:", mongoose.connection.db.databaseName); // Debug log
+    console.log("Request body:", req.body);
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
-    // Validate companyId exists
-    const companyObjectId = new mongoose.Types.ObjectId(companyId);
-    console.log("Converted companyId to ObjectId:", companyObjectId);
-    console.log("Executing findById query with:", companyObjectId);
-    let company = await Company.findById(companyObjectId);
-    console.log("Query result:", company);
+    // Validate companyId exists (treat _id as string to match database)
+    console.log("Received companyId:", companyId);
+    let company = await Company.findOne({ _id: companyId }); // Use findOne with string _id
+    console.log("Query result with string _id:", company);
 
     // Fallback to raw query if Mongoose fails
     if (!company) {
-      console.log("Mongoose findById failed, trying raw query...");
-      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyObjectId });
+      console.log("Mongoose findOne failed, trying raw query...");
+      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyId }); // Use string _id
       console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
-        console.log("Company not found in raw query for ObjectId:", companyObjectId);
+        console.log("Company not found in raw query for _id:", companyId);
         return res.status(404).json({ message: "Company not found" });
       } else {
         // Map raw data to schema-expected fields manually
@@ -65,7 +64,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
           State: rawCompany.State,
           City: rawCompany.City,
           phone: rawCompany.Phone,
-          category: rawCompany.category || rawCompany.Categories, // Handle potential mismatch
+          category: rawCompany.category || rawCompany.Categories,
           subcategory: rawCompany.subcategory,
           Country: rawCompany.Country,
         });
@@ -89,7 +88,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     }
 
     const companyDetails = new CompanyDetails({
-      companyId: companyObjectId,
+      companyId: company._id, // Use the matched _id (string)
       employeeId,
       orderId,
       formData: details,
