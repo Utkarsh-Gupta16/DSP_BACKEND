@@ -13,7 +13,7 @@ const router = express.Router();
 router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, res) => {
   const { orderId, email, userName, totalCount, approvedCount, addOns } = req.body;
 
-  // Validation (unchanged)
+  // Validation
   if (
     orderId === undefined ||
     email === undefined ||
@@ -57,8 +57,6 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
   }
 
   try {
-    console.log("✔ Preparing CSV and email for:", { orderId, email, userName, totalCount, approvedCount, addOns });
-
     // Fetch the order to validate existence
     const order = await Order.findById(orderId);
     if (!order) {
@@ -67,7 +65,6 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
     // Fetch all approved company details for the given orderId
     const approvedCompanyDetails = await CompanyDetails.find({ orderId, status: "approved" }).lean();
-    console.log("✔ Fetched approvedCompanyDetails:", approvedCompanyDetails.map(d => ({ _id: d._id, companyId: d.companyId })));
 
     if (approvedCompanyDetails.length === 0) {
       return res.status(404).json({ message: "No approved company details found for this order" });
@@ -75,11 +72,9 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
     // Extract companyIds as strings to match the companies collection
     const companyIds = approvedCompanyDetails.map(detail => detail.companyId.toString());
-    console.log("✔ Extracted companyIds (as strings):", companyIds);
 
     // Use raw MongoDB query to fetch companies with _id as string
     const companies = await mongoose.connection.db.collection("companies").find({ _id: { $in: companyIds } }).toArray();
-    console.log("✔ Fetched companies raw data:", companies.map(c => ({ _id: c._id, businessName: c["Business Name"] || c.businessName })));
 
     if (companies.length === 0) {
       return res.status(404).json({ message: "No companies found matching the approved company details. Check database consistency." });
@@ -103,11 +98,9 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
         Timezone: company.Timezone || "UTC",
       };
     });
-    console.log("✔ Enriched companies count:", enrichedCompanies.length);
 
     // Generate CSV content
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
-    console.log("✔ Generated CSV content preview:", csvContent.substring(0, 200));
 
     const attachment = [
       {
@@ -138,11 +131,9 @@ DataSellingProject Team
       attachments: attachment,
     });
 
-    console.log(`✔ Email sent to ${email}`);
     res.status(200).json({ message: "Email with CSV sent successfully" });
 
   } catch (error) {
-    console.error("❌ Error in send-order-email endpoint:", error.message, error.stack);
     res.status(500).json({ message: "Failed to send email", error: error.message });
   }
 });
