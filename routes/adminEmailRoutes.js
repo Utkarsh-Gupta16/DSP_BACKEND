@@ -67,22 +67,25 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
     // Fetch all approved company details for the given orderId
     const approvedCompanyDetails = await CompanyDetails.find({ orderId, status: "approved" }).lean();
-    console.log("✔ Fetched approvedCompanyDetails count:", approvedCompanyDetails.length);
+    console.log("✔ Fetched approvedCompanyDetails:", approvedCompanyDetails.map(d => ({ _id: d._id, companyId: d.companyId })));
 
     if (approvedCompanyDetails.length === 0) {
       return res.status(404).json({ message: "No approved company details found for this order" });
     }
 
-    // Extract companyIds from approvedCompanyDetails
-    const companyIds = approvedCompanyDetails.map(detail => detail.companyId);
-    console.log("✔ Extracted companyIds:", companyIds);
+    // Extract companyIds as strings to match the companies collection
+    const companyIds = approvedCompanyDetails.map(detail => detail.companyId.toString());
+    console.log("✔ Extracted companyIds (as strings):", companyIds);
 
-    // Fetch corresponding companies
+    // Fetch corresponding companies with _id as string
     const companies = await Company.find({ _id: { $in: companyIds } }).lean();
-    console.log("✔ Fetched companies count:", companies.length);
+    console.log("✔ Fetched companies raw data:", companies.map(c => ({ _id: c._id, businessName: c["Business Name"] || c.businessName })));
 
     if (companies.length === 0) {
-      return res.status(404).json({ message: "No companies found matching the approved company details" });
+      // Try a raw MongoDB query to debug further
+      const rawCompanies = await mongoose.connection.db.collection("companies").find({ _id: { $in: companyIds } }).toArray();
+      console.log("✔ Raw MongoDB query result:", rawCompanies.map(c => ({ _id: c._id, businessName: c["Business Name"] })));
+      return res.status(404).json({ message: "No companies found matching the approved company details. Check database consistency." });
     }
 
     // Enrich companies with details from CompanyDetails
@@ -90,8 +93,7 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
       const detail = approvedCompanyDetails.find(d => d.companyId.toString() === company._id.toString());
       return {
         ...company,
-        ...detail?.formData, // Merge formData (addOns) from CompanyDetails
-        // Ensure base fields are present even if not in formData
+        ...detail?.formData,
         "Business Name": company["Business Name"] || company.businessName || "Unknown",
         Country: company.Country || "Unknown",
         State: company.State || "Unknown",
@@ -108,7 +110,7 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
     // Generate CSV content
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
-    console.log("✔ Generated CSV content preview:", csvContent.substring(0, 200)); // Log first 200 chars for debugging
+    console.log("✔ Generated CSV content preview:", csvContent.substring(0, 200));
 
     const attachment = [
       {
