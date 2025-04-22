@@ -120,15 +120,11 @@ router.get("/pending-approvals", authenticateToken, async (req, res) => {
       })
       .select("companyId employeeId submittedDate formData orderId");
 
-    // Debug: Log the raw data to check population
-    console.log("Raw pending approvals:", JSON.stringify(pendingApprovals, null, 2));
-
-    // Transform data with separate query for raw "Business Name"
     const transformedApprovals = await Promise.all(pendingApprovals.map(async (approval) => {
       const company = approval.companyId || { _id: approval.companyId };
       let businessName = `Unknown (ID: ${company._id})`;
 
-      // Fetch the raw document to get "Business Name"
+      // Fetch the raw document and map "Business Name" to businessName
       if (company._id) {
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
         businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
@@ -138,7 +134,7 @@ router.get("/pending-approvals", authenticateToken, async (req, res) => {
         _id: approval._id,
         companyId: {
           _id: company._id,
-          businessName: businessName
+          businessName: businessName // Ensure this matches the frontend expectation
         },
         employeeId: {
           _id: approval.employeeId._id,
@@ -151,16 +147,12 @@ router.get("/pending-approvals", authenticateToken, async (req, res) => {
       };
     }));
 
-    // Debug: Log transformed data
-    console.log("Transformed pending approvals:", JSON.stringify(transformedApprovals, null, 2));
-
     res.status(200).json(transformedApprovals);
   } catch (error) {
     console.error("Error fetching pending approvals:", error.message);
     res.status(500).json({ message: "Failed to fetch pending approvals", error: error.message });
   }
 });
-
 // Approve or Reject Company Details (Admin)
 router.put("/approve-company-details/:id", authenticateToken, checkAdminRole, async (req, res) => {
   try {
@@ -287,16 +279,14 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       .populate({
         path: "companyId",
         model: "Company",
-        select: "_id" // Only fetch _id initially
+        select: "_id"
       })
       .select("companyId submittedDate status approvedAt formData");
 
-    // Transform data with separate query for raw "Business Name"
     const transformedHistory = await Promise.all(history.map(async (record) => {
       const company = record.companyId || { _id: record.companyId };
       let businessName = `Unknown (ID: ${company._id})`;
 
-      // Fetch the raw document to get "Business Name"
       if (company._id) {
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
         businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
@@ -306,14 +296,14 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
         _id: record._id,
         company: {
           _id: company._id,
-          "Business Name": businessName
+          businessName: businessName // Consistent field name
         },
         submittedDate: record.submittedDate,
         status: record.status,
         approvedAt: record.approvedAt,
         formData: record.formData
       };
-    }));
+    });
 
     res.status(200).json(transformedHistory);
   } catch (error) {
@@ -321,7 +311,6 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
     res.status(500).json({ message: "Failed to fetch history", error: error.message });
   }
 });
-
 router.get("/submitted-companies", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
