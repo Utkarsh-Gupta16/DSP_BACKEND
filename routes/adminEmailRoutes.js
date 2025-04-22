@@ -13,7 +13,7 @@ const router = express.Router();
 router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, res) => {
   const { orderId, email, userName, totalCount, approvedCount, addOns } = req.body;
 
-  // Safer validation: check explicitly for undefined
+  // Validation (unchanged)
   if (
     orderId === undefined ||
     email === undefined ||
@@ -27,22 +27,18 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     });
   }
 
-  // Validate orderId as a valid MongoDB ObjectId
   if (!mongoose.isValidObjectId(orderId)) {
     return res.status(400).json({ message: "Invalid orderId format" });
   }
 
-  // Validate email format
   if (!validator.isEmail(email)) {
     return res.status(400).json({ message: "Invalid email format" });
   }
 
-  // Validate userName (basic string check, non-empty)
   if (typeof userName !== "string" || userName.trim().length === 0) {
     return res.status(400).json({ message: "Invalid userName format" });
   }
 
-  // Validate totalCount and approvedCount (non-negative numbers)
   if (!Number.isInteger(totalCount) || totalCount < 0) {
     return res.status(400).json({ message: "totalCount must be a non-negative integer" });
   }
@@ -50,7 +46,6 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     return res.status(400).json({ message: "approvedCount must be a non-negative integer" });
   }
 
-  // Validate addOns (must be an array of valid strings from allAddOnFields)
   if (!Array.isArray(addOns)) {
     return res.status(400).json({ message: "addOns must be an array" });
   }
@@ -70,21 +65,51 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Fetch approved company details for the given orderId
-    const approvedCompanyDetails = await CompanyDetails.find({ orderId, status: "approved" }).limit(totalCount);
+    // Fetch all approved company details for the given orderId
+    const approvedCompanyDetails = await CompanyDetails.find({ orderId, status: "approved" }).lean();
+    console.log("✔ Fetched approvedCompanyDetails count:", approvedCompanyDetails.length);
+
+    if (approvedCompanyDetails.length === 0) {
+      return res.status(404).json({ message: "No approved company details found for this order" });
+    }
+
+    // Extract companyIds from approvedCompanyDetails
     const companyIds = approvedCompanyDetails.map(detail => detail.companyId);
+    console.log("✔ Extracted companyIds:", companyIds);
 
     // Fetch corresponding companies
-    const companies = await Company.find({ _id: { $in: companyIds } });
+    const companies = await Company.find({ _id: { $in: companyIds } }).lean();
+    console.log("✔ Fetched companies count:", companies.length);
 
-    // Map company data with details
+    if (companies.length === 0) {
+      return res.status(404).json({ message: "No companies found matching the approved company details" });
+    }
+
+    // Enrich companies with details from CompanyDetails
     const enrichedCompanies = companies.map(company => {
-      const detail = approvedCompanyDetails.find(d => d.companyId.equals(company._id));
-      return { ...company.toObject(), ...detail?.formData };
+      const detail = approvedCompanyDetails.find(d => d.companyId.toString() === company._id.toString());
+      return {
+        ...company,
+        ...detail?.formData, // Merge formData (addOns) from CompanyDetails
+        // Ensure base fields are present even if not in formData
+        "Business Name": company["Business Name"] || company.businessName || "Unknown",
+        Country: company.Country || "Unknown",
+        State: company.State || "Unknown",
+        City: company.City || "Unknown",
+        Address: company.Address || "Unknown",
+        Phone: company.Phone || "Unknown",
+        category: company.category || company.Categories || "Unknown",
+        subcategory: company.subcategory || "Unknown",
+        Categories: company.Categories || "Unknown",
+        Timezone: company.Timezone || "UTC",
+      };
     });
+    console.log("✔ Enriched companies count:", enrichedCompanies.length);
 
-    // Generate CSV content with base fields and order-specific add-ons
+    // Generate CSV content
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
+    console.log("✔ Generated CSV content preview:", csvContent.substring(0, 200)); // Log first 200 chars for debugging
+
     const attachment = [
       {
         filename: `order_${orderId}_data.csv`,
@@ -118,7 +143,7 @@ DataSellingProject Team
     res.status(200).json({ message: "Email with CSV sent successfully" });
 
   } catch (error) {
-    console.error("❌ Error in send-order-email endpoint:", error.message);
+    console.error("❌ Error in send-order-email endpoint:", error.message, error.stack);
     res.status(500).json({ message: "Failed to send email", error: error.message });
   }
 });
