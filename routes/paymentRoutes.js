@@ -433,7 +433,13 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
       const order = task.orderId;
       const query = {};
       if (order.filters.categories?.length > 0) query.category = { $in: order.filters.categories };
-      if (order.filters.subcategories?.length > 0) query.subcategory = { $in: order.filters.subcategories };
+      if (order.filters.subcategories?.length > 0) {
+        // Normalize subcategories to match the stored format
+        const normalizedSubcategories = order.filters.subcategories.map(subcat =>
+          subcat.split(":").pop().trim()
+        );
+        query.subcategory = { $in: normalizedSubcategories };
+      }
       if (order.filters.subSubcategories?.length > 0) {
         const normalizedSubSubcategories = order.filters.subSubcategories.map(subSub =>
           subSub.split(":").pop().trim()
@@ -443,16 +449,16 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
       if (order.filters.country?.value) query.Country = order.filters.country.value;
       if (order.filters.state?.value) query.State = order.filters.state.value;
       if (order.filters.city?.value) query.City = order.filters.city.value;
-
+    
       console.log("Company query for task", task._id, ":", query);
-
+    
       const startIndex = task.startIndex || 0;
       const companyCount = task.companyCount || 0;
       if (startIndex < 0 || companyCount <= 0) {
         console.warn("Invalid startIndex or companyCount for task", task._id, { startIndex, companyCount });
         return { taskId: task._id, companies: [], range: [0, 0] };
       }
-
+    
       let companies;
       try {
         companies = await Company.find(query)
@@ -464,17 +470,16 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
         console.error("Database error fetching companies for task", task._id, dbError.message);
         return { taskId: task._id, companies: [], range: [startIndex + 1, startIndex] };
       }
-
-      // Safely handle companyData being undefined
+    
       const companiesWithDetails = companies.map(company => {
-        const companyData = task.companyData || []; // Default to empty array if undefined
+        const companyData = task.companyData || [];
         const matchingData = companyData.find(cd => cd.companyId && cd.companyId.toString() === company._id.toString());
         return {
           ...company,
           companyDetails: matchingData?.companyDetails || {}
         };
       });
-
+    
       return { taskId: task._id, companies: companiesWithDetails, range: [startIndex + 1, startIndex + companies.length] };
     });
 

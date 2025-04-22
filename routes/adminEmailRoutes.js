@@ -1,14 +1,13 @@
-// src/routes/adminEmailRoutes.js
 import express from "express";
+import mongoose from "mongoose";
+import validator from "validator";
 import sendEmail from "../utils/sendEmail.js";
 import { authenticateToken, checkAdminRole } from "../middleware/authMiddleware.js";
-import { Company } from "../models/companyModel.js"; // Changed from `import Company from`
-import CompanyDetails from "../models/companyDetailsModel.js"; // Changed from `import {CompanyDetails} from`
-import {Order} from "../models/orderModel.js";
+import { Company } from "../models/companyModel.js";
+import CompanyDetails from "../models/companyDetailsModel.js";
+import { Order } from "../models/orderModel.js";
 
 const router = express.Router();
-
-// [Rest of the code remains the same...]
 
 // Endpoint to generate CSV and send email
 router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, res) => {
@@ -28,10 +27,44 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     });
   }
 
+  // Validate orderId as a valid MongoDB ObjectId
+  if (!mongoose.isValidObjectId(orderId)) {
+    return res.status(400).json({ message: "Invalid orderId format" });
+  }
+
+  // Validate email format
+  if (!validator.isEmail(email)) {
+    return res.status(400).json({ message: "Invalid email format" });
+  }
+
+  // Validate userName (basic string check, non-empty)
+  if (typeof userName !== "string" || userName.trim().length === 0) {
+    return res.status(400).json({ message: "Invalid userName format" });
+  }
+
+  // Validate totalCount and approvedCount (non-negative numbers)
+  if (!Number.isInteger(totalCount) || totalCount < 0) {
+    return res.status(400).json({ message: "totalCount must be a non-negative integer" });
+  }
+  if (!Number.isInteger(approvedCount) || approvedCount < 0) {
+    return res.status(400).json({ message: "approvedCount must be a non-negative integer" });
+  }
+
+  // Validate addOns (must be an array of valid strings from allAddOnFields)
+  if (!Array.isArray(addOns)) {
+    return res.status(400).json({ message: "addOns must be an array" });
+  }
+  const validAddOnKeys = new Set(Object.keys(allAddOnFields));
+  for (const addOn of addOns) {
+    if (typeof addOn !== "string" || !validAddOnKeys.has(addOn)) {
+      return res.status(400).json({ message: `Invalid addOn: ${addOn}` });
+    }
+  }
+
   try {
     console.log("✔ Preparing CSV and email for:", { orderId, email, userName, totalCount, approvedCount, addOns });
 
-    // Fetch the order to validate existence and get userName if not in body
+    // Fetch the order to validate existence
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
@@ -91,6 +124,114 @@ DataSellingProject Team
 });
 
 // CSV Generator with base fields and order-specific add-ons
+const allAddOnFields = {
+  website: "website",
+  mailIds: "mailIds",
+  linkedinProfile: "linkedinProfile",
+  headquarterAddress: "headquarterAddress",
+  foundationYear: "foundationYear",
+  presentInCountries: "presentInCountries",
+  locationOfEachCountryOffice: "locationOfEachCountryOffice",
+  businessDevelopmentManager: "businessDevelopmentManager",
+  cco: "cco",
+  cdo: "cdo",
+  ceo: "ceo",
+  cfo: "cfo",
+  chro: "chro",
+  cio: "cio",
+  ciso: "ciso",
+  cmo: "cmo",
+  coFounder: "coFounder",
+  coo: "coo",
+  cpo: "cpo",
+  cro: "cro",
+  cso: "cso",
+  cto: "cto",
+  customerSuccessManager: "customerSuccessManager",
+  cxo: "cxo",
+  cybersecurityDirector: "cybersecurityDirector",
+  cybersecurityManager: "cybersecurityManager",
+  devOpsManager: "devOpsManager",
+  directorOfBusinessDevelopment: "directorOfBusinessDevelopment",
+  directorOfDigitalMarketing: "directorOfDigitalMarketing",
+  directorOfFinance: "directorOfFinance",
+  directorOfHr: "directorOfHr",
+  directorOfIt: "directorOfIt",
+  directorOfMarketing: "directorOfMarketing",
+  directorOfOperations: "directorOfOperations",
+  directorOfProcurement: "directorOfProcurement",
+  directorOfProductManagement: "directorOfProductManagement",
+  directorOfSales: "directorOfSales",
+  directorOfStrategy: "directorOfStrategy",
+  directorOfSupplyChain: "directorOfSupplyChain",
+  directorOfTalentAcquisition: "directorOfTalentAcquisition",
+  ecommerceDirector: "ecommerceDirector",
+  ecommerceManager: "ecommerceManager",
+  evp: "evp",
+  financeAccounting: "financeAccounting",
+  financeDirector: "financeDirector",
+  financialController: "financialController",
+  founder: "founder",
+  founderCoFounder: "founderCoFounder",
+  gm: "gm",
+  headOfBusinessDevelopment: "headOfBusinessDevelopment",
+  headOfCloudInfrastructure: "headOfCloudInfrastructure",
+  headOfCustomerSuccess: "headOfCustomerSuccess",
+  headOfDigitalTransformation: "headOfDigitalTransformation",
+  headOfGrowthStrategy: "headOfGrowthStrategy",
+  headOfHr: "headOfHr",
+  headOfIt: "headOfIt",
+  headOfItInfrastructure: "headOfItInfrastructure",
+  headOfManufacturing: "headOfManufacturing",
+  headOfMarketing: "headOfMarketing",
+  headOfMarketplaceManagement: "headOfMarketplaceManagement",
+  headOfPartnerships: "headOfPartnerships",
+  headOfPerformanceMarketing: "headOfPerformanceMarketing",
+  headOfPropertyManagement: "headOfPropertyManagement",
+  headOfSales: "headOfSales",
+  headOfSeoPpcSocialMedia: "headOfSeoPpcSocialMedia",
+  headOfSoftwareDevelopment: "headOfSoftwareDevelopment",
+  headOfStrategy: "headOfStrategy",
+  hrBusinessPartner: "hrBusinessPartner",
+  investmentManager: "investmentManager",
+  itDirector: "itDirector",
+  itManager: "itManager",
+  technologyManager: "technologyManager",
+  managingBroker: "managingBroker",
+  md: "md",
+  marketingManager: "marketingManager",
+  operationsManager: "operationsManager",
+  owner: "owner",
+  partner: "partner",
+  performanceMarketingManager: "performanceMarketingManager",
+  president: "president",
+  principal: "principal",
+  procurementManager: "procurementManager",
+  productManager: "productManager",
+  realEstateDeveloper: "realEstateDeveloper",
+  riskComplianceOfficer: "riskComplianceOfficer",
+  salesManager: "salesManager",
+  securityManager: "securityManager",
+  seniorBusinessDevelopmentManager: "seniorBusinessDevelopmentManager",
+  seniorItManager: "seniorItManager",
+  seniorMarketingManager: "seniorMarketingManager",
+  seniorProcurementManager: "seniorProcurementManager",
+  seniorVicePresident: "seniorVicePresident",
+  supplyChainManager: "supplyChainManager",
+  vpBusinessDevelopment: "vpBusinessDevelopment",
+  vpCustomerSuccess: "vpCustomerSuccess",
+  vpEngineering: "vpEngineering",
+  vpFinance: "vpFinance",
+  vpIt: "vpIt",
+  vpMarketing: "vpMarketing",
+  vpOperations: "vpOperations",
+  vpSales: "vpSales",
+  vpStrategy: "vpStrategy",
+  vpTechnology: "vpTechnology",
+  vpHr: "vpHr",
+  vpProduct: "vpProduct",
+};
+
 const generateCSV = (companies, totalCount, addOns) => {
   // Define base fields
   const baseFields = [
@@ -106,118 +247,9 @@ const generateCSV = (companies, totalCount, addOns) => {
     { label: "Timezone", value: "Timezone" },
   ];
 
-  // Define possible add-on fields from companyDetails.formData
-  const allAddOnFields = {
-    website: "website",
-    mailIds: "mailIds",
-    linkedinProfile: "linkedinProfile",
-    headquarterAddress: "headquarterAddress",
-    foundationYear: "foundationYear",
-    presentInCountries: "presentInCountries",
-    locationOfEachCountryOffice: "locationOfEachCountryOffice",
-    businessDevelopmentManager: "businessDevelopmentManager",
-    cco: "cco",
-    cdo: "cdo",
-    ceo: "ceo",
-    cfo: "cfo",
-    chro: "chro",
-    cio: "cio",
-    ciso: "ciso",
-    cmo: "cmo",
-    coFounder: "coFounder",
-    coo: "coo",
-    cpo: "cpo",
-    cro: "cro",
-    cso: "cso",
-    cto: "cto",
-    customerSuccessManager: "customerSuccessManager",
-    cxo: "cxo",
-    cybersecurityDirector: "cybersecurityDirector",
-    cybersecurityManager: "cybersecurityManager",
-    devOpsManager: "devOpsManager",
-    directorOfBusinessDevelopment: "directorOfBusinessDevelopment",
-    directorOfDigitalMarketing: "directorOfDigitalMarketing",
-    directorOfFinance: "directorOfFinance",
-    directorOfHr: "directorOfHr",
-    directorOfIt: "directorOfIt",
-    directorOfMarketing: "directorOfMarketing",
-    directorOfOperations: "directorOfOperations",
-    directorOfProcurement: "directorOfProcurement",
-    directorOfProductManagement: "directorOfProductManagement",
-    directorOfSales: "directorOfSales",
-    directorOfStrategy: "directorOfStrategy",
-    directorOfSupplyChain: "directorOfSupplyChain",
-    directorOfTalentAcquisition: "directorOfTalentAcquisition",
-    ecommerceDirector: "ecommerceDirector",
-    ecommerceManager: "ecommerceManager",
-    evp: "evp",
-    financeAccounting: "financeAccounting",
-    financeDirector: "financeDirector",
-    financialController: "financialController",
-    founder: "founder",
-    founderCoFounder: "founderCoFounder",
-    gm: "gm",
-    headOfBusinessDevelopment: "headOfBusinessDevelopment",
-    headOfCloudInfrastructure: "headOfCloudInfrastructure",
-    headOfCustomerSuccess: "headOfCustomerSuccess",
-    headOfDigitalTransformation: "headOfDigitalTransformation",
-    headOfGrowthStrategy: "headOfGrowthStrategy",
-    headOfHr: "headOfHr",
-    headOfIt: "headOfIt",
-    headOfItInfrastructure: "headOfItInfrastructure",
-    headOfManufacturing: "headOfManufacturing",
-    headOfMarketing: "headOfMarketing",
-    headOfMarketplaceManagement: "headOfMarketplaceManagement",
-    headOfPartnerships: "headOfPartnerships",
-    headOfPerformanceMarketing: "headOfPerformanceMarketing",
-    headOfPropertyManagement: "headOfPropertyManagement",
-    headOfSales: "headOfSales",
-    headOfSeoPpcSocialMedia: "headOfSeoPpcSocialMedia",
-    headOfSoftwareDevelopment: "headOfSoftwareDevelopment",
-    headOfStrategy: "headOfStrategy",
-    hrBusinessPartner: "hrBusinessPartner",
-    investmentManager: "investmentManager",
-    itDirector: "itDirector",
-    itManager: "itManager",
-    technologyManager: "technologyManager",
-    managingBroker: "managingBroker",
-    md: "md",
-    marketingManager: "marketingManager",
-    operationsManager: "operationsManager",
-    owner: "owner",
-    partner: "partner",
-    performanceMarketingManager: "performanceMarketingManager",
-    president: "president",
-    principal: "principal",
-    procurementManager: "procurementManager",
-    productManager: "productManager",
-    realEstateDeveloper: "realEstateDeveloper",
-    riskComplianceOfficer: "riskComplianceOfficer",
-    salesManager: "salesManager",
-    securityManager: "securityManager",
-    seniorBusinessDevelopmentManager: "seniorBusinessDevelopmentManager",
-    seniorItManager: "seniorItManager",
-    seniorMarketingManager: "seniorMarketingManager",
-    seniorProcurementManager: "seniorProcurementManager",
-    seniorVicePresident: "seniorVicePresident",
-    supplyChainManager: "supplyChainManager",
-    vpBusinessDevelopment: "vpBusinessDevelopment",
-    vpCustomerSuccess: "vpCustomerSuccess",
-    vpEngineering: "vpEngineering",
-    vpFinance: "vpFinance",
-    vpIt: "vpIt",
-    vpMarketing: "vpMarketing",
-    vpOperations: "vpOperations",
-    vpSales: "vpSales",
-    vpStrategy: "vpStrategy",
-    vpTechnology: "vpTechnology",
-    vpHr: "vpHr",
-    vpProduct: "vpProduct",
-  };
-
   // Filter add-on fields based on what was selected in the order
   const selectedAddOnFields = addOns
-    .map(addOn => allAddOnFields[addOn] ? { label: addOn, value: allAddOnFields[addOn] } : null)
+    .map(addOn => (allAddOnFields[addOn] ? { label: addOn, value: allAddOnFields[addOn] } : null))
     .filter(field => field);
 
   // Combine base fields and selected add-ons
@@ -228,14 +260,22 @@ const generateCSV = (companies, totalCount, addOns) => {
 
   // Generate CSV rows
   const rows = companies.map(company => {
-    return allFields.map(field => {
-      const value = company[field.value] !== undefined && company[field.value] !== null
-        ? Array.isArray(company[field.value])
-          ? `"${company[field.value].join(";")}"` // Handle arrays (e.g., mailIds)
-          : `"${company[field.value]}"`
-        : '"not present"';
-      return value;
-    }).join(",");
+    return allFields
+      .map(field => {
+        const fieldValue = company[field.value];
+        let formattedValue;
+
+        if (fieldValue === undefined || fieldValue === null) {
+          formattedValue = '"not present"';
+        } else if (Array.isArray(fieldValue)) {
+          formattedValue = `"${fieldValue.join(";")}"`;
+        } else {
+          formattedValue = `"${fieldValue}"`;
+        }
+
+        return formattedValue;
+      })
+      .join(",");
   }).join("\n");
 
   return header + rows;
