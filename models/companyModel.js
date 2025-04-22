@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 
 const companySchema = new mongoose.Schema(
   {
+
+    _id: mongoose.Schema.Types.ObjectId,
     businessName: { type: String, required: true },
     originUrl: { type: String, required: true },
     companyUrl: { type: String, required: true },
