@@ -106,7 +106,6 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       .json({ message: "Failed to submit company details", error: error.message });
   }
 });
-
 // Get Pending Company Details for Admin Approval
 router.get("/pending-approvals", authenticateToken, async (req, res) => {
   try {
