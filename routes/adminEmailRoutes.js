@@ -77,14 +77,11 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     const companyIds = approvedCompanyDetails.map(detail => detail.companyId.toString());
     console.log("✔ Extracted companyIds (as strings):", companyIds);
 
-    // Fetch corresponding companies with _id as string
-    const companies = await Company.find({ _id: { $in: companyIds } }).lean();
+    // Use raw MongoDB query to fetch companies with _id as string
+    const companies = await mongoose.connection.db.collection("companies").find({ _id: { $in: companyIds } }).toArray();
     console.log("✔ Fetched companies raw data:", companies.map(c => ({ _id: c._id, businessName: c["Business Name"] || c.businessName })));
 
     if (companies.length === 0) {
-      // Try a raw MongoDB query to debug further
-      const rawCompanies = await mongoose.connection.db.collection("companies").find({ _id: { $in: companyIds } }).toArray();
-      console.log("✔ Raw MongoDB query result:", rawCompanies.map(c => ({ _id: c._id, businessName: c["Business Name"] })));
       return res.status(404).json({ message: "No companies found matching the approved company details. Check database consistency." });
     }
 
