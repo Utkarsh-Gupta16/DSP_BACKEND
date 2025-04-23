@@ -278,6 +278,8 @@ router.get("/employee-history", authenticateToken, async (req, res) => {
 router.get("/employee-history-with-companies", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
+    console.log("Fetching history for employeeId:", employeeId); // Log the employeeId
+
     const history = await CompanyDetails.find({ employeeId })
       .populate({
         path: "companyId",
@@ -286,19 +288,22 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       })
       .select("companyId submittedDate status approvedAt formData");
 
+    console.log("Raw history records:", JSON.stringify(history, null, 2)); // Log the raw history data
+
     const transformedHistory = await Promise.all(history.map(async (record) => {
       let company = record.companyId || { _id: record.companyId };
       let businessName = `Unknown (ID: ${company._id || 'N/A'})`;
       let companyId = company._id || "N/A";
 
+      console.log("Processing record with companyId:", company._id); // Log the companyId for this record
+
       if (company._id) {
         try {
-          // Ensure the ObjectId is correctly formatted
           const objectId = new mongoose.Types.ObjectId(company._id);
-          
-          // Fetch the raw document from the database to get "Business Name"
           const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: objectId });
           
+          console.log("Raw company data for ID", company._id, ":", rawCompany); // Log the raw company data
+
           if (rawCompany && rawCompany["Business Name"]) {
             businessName = rawCompany["Business Name"];
             companyId = rawCompany._id.toString();
@@ -316,7 +321,7 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
         _id: record._id,
         company: {
           _id: companyId,
-          businessName: businessName // Map to businessName for frontend consistency
+          businessName: businessName
         },
         submittedDate: record.submittedDate,
         status: record.status,
@@ -325,6 +330,7 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       };
     }));
 
+    console.log("Transformed history:", JSON.stringify(transformedHistory, null, 2)); // Log the final transformed data
     res.status(200).json(transformedHistory);
   } catch (error) {
     console.error("Error fetching employee history with companies:", error.message, error.stack);
