@@ -292,13 +292,24 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       let companyId = company._id || "N/A";
 
       if (company._id) {
-        // Fetch the raw document from the database to get "Business Name"
-        const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-        if (rawCompany) {
-          // Map "Business Name" from the database to businessName for the frontend
-          businessName = rawCompany["Business Name"] || businessName;
-          companyId = rawCompany._id || companyId;
+        try {
+          // Ensure the ObjectId is correctly formatted
+          const objectId = new mongoose.Types.ObjectId(company._id);
+          
+          // Fetch the raw document from the database to get "Business Name"
+          const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: objectId });
+          
+          if (rawCompany && rawCompany["Business Name"]) {
+            businessName = rawCompany["Business Name"];
+            companyId = rawCompany._id.toString();
+          } else {
+            console.error(`No "Business Name" found for company ID: ${company._id}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching raw company data for ID ${company._id}:`, error.message);
         }
+      } else {
+        console.warn(`No company ID found for record: ${record._id}`);
       }
 
       return {
@@ -316,10 +327,11 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
 
     res.status(200).json(transformedHistory);
   } catch (error) {
-    console.error("Error fetching employee history with companies:", error.message);
+    console.error("Error fetching employee history with companies:", error.message, error.stack);
     res.status(500).json({ message: "Failed to fetch history", error: error.message });
   }
 });
+
 
 router.get("/submitted-companies", authenticateToken, async (req, res) => {
   try {
