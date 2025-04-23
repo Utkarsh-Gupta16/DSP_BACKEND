@@ -38,27 +38,23 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
-    // Validate companyId format
-    if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+    // Validate companyId format (still ensure it’s a valid hex string)
+    if (!companyId || !/^[0-9a-fA-F]{24}$/.test(companyId)) {
       console.log("Invalid companyId format:", companyId);
       return res.status(400).json({ message: "Invalid companyId format" });
     }
 
-    // Convert companyId to ObjectId
-    const companyObjectId = new mongoose.Types.ObjectId(companyId);
-    console.log("Converted companyId to ObjectId:", companyObjectId);
-
-    // Validate companyId exists using Mongoose
-    let company = await Company.findOne({ _id: companyObjectId });
-    console.log("Query result with ObjectId:", company);
+    // Query directly with the string companyId
+    let company = await Company.findOne({ _id: companyId });
+    console.log("Query result with string _id:", company);
 
     // Fallback to raw query if Mongoose fails
     if (!company) {
       console.log("Mongoose findOne failed, trying raw query...");
-      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyObjectId });
+      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyId });
       console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
-        console.log("Company not found in raw query for _id:", companyObjectId);
+        console.log("Company not found in raw query for _id:", companyId);
         return res.status(404).json({ message: "Company not found" });
       } else {
         company = new Company({
