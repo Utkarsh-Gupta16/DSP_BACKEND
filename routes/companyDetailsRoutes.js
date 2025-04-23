@@ -33,26 +33,34 @@ const sendEmail = async (options) => {
 // Submit Company Details (Employee)
 router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
-    console.log("Connected database:", mongoose.connection.db.databaseName); // Debug log
+    console.log("Connected database:", mongoose.connection.db.databaseName);
     console.log("Request body:", req.body);
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
-    // Validate companyId exists (treat _id as string to match database)
-    console.log("Received companyId:", companyId);
-    let company = await Company.findOne({ _id: companyId }); // Use findOne with string _id
-    console.log("Query result with string _id:", company);
+    // Validate companyId format
+    if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+      console.log("Invalid companyId format:", companyId);
+      return res.status(400).json({ message: "Invalid companyId format" });
+    }
+
+    // Convert companyId to ObjectId
+    const companyObjectId = new mongoose.Types.ObjectId(companyId);
+    console.log("Converted companyId to ObjectId:", companyObjectId);
+
+    // Validate companyId exists using Mongoose
+    let company = await Company.findOne({ _id: companyObjectId });
+    console.log("Query result with ObjectId:", company);
 
     // Fallback to raw query if Mongoose fails
     if (!company) {
       console.log("Mongoose findOne failed, trying raw query...");
-      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyId }); // Use string _id
+      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyObjectId });
       console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
-        console.log("Company not found in raw query for _id:", companyId);
+        console.log("Company not found in raw query for _id:", companyObjectId);
         return res.status(404).json({ message: "Company not found" });
       } else {
-        // Map raw data to schema-expected fields manually
         company = new Company({
           _id: rawCompany._id,
           businessName: rawCompany["Business Name"],
@@ -86,7 +94,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     }
 
     const companyDetails = new CompanyDetails({
-      companyId: company._id, // Use the matched _id (string)
+      companyId: company._id,
       employeeId,
       orderId,
       formData: details,
@@ -103,7 +111,6 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       .json({ message: "Failed to submit company details", error: error.message });
   }
 });
-
 // Get Pending Company Details for Admin Approval
 router.get("/pending-approvals", authenticateToken, async (req, res) => {
   try {
