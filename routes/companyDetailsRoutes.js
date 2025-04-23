@@ -248,14 +248,16 @@ router.get("/employee-history", authenticateToken, async (req, res) => {
       .populate({
         path: "companyId",
         model: "Company",
-        select: "businessName _id"
+        select: "_id businessName"
       })
       .select("companyId submittedDate status approvedAt formData");
 
-    // Transform the data to include businessName
     const transformedHistory = history.map((record) => {
-      const companyIdStr = record.companyId?._id.toString();
-      const businessName = record.companyId?.businessName || `Unknown (ID: ${record.companyId?._id || 'N/A'})`;
+      let businessName = `Unknown (ID: ${record.companyId?._id || 'N/A'})`;
+      if (record.companyId?._id) {
+        const rawCompany = mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(record.companyId._id) });
+        businessName = rawCompany?.["Business Name"] || businessName;
+      }
       return {
         ...record.toObject(),
         companyId: {
@@ -280,25 +282,30 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       .populate({
         path: "companyId",
         model: "Company",
-        select: "_id"
+        select: "_id" // We’ll fetch the raw data anyway, so just get the ID for now
       })
       .select("companyId submittedDate status approvedAt formData");
 
     const transformedHistory = await Promise.all(history.map(async (record) => {
-      const company = record.companyId || { _id: record.companyId };
+      let company = record.companyId || { _id: record.companyId };
       let businessName = `Unknown (ID: ${company._id || 'N/A'})`;
+      let companyId = company._id || "N/A";
 
       if (company._id) {
+        // Fetch the raw document from the database to get "Business Name"
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-        businessName = rawCompany && (rawCompany["Business Name"] || rawCompany.businessName) ? 
-          (rawCompany["Business Name"] || rawCompany.businessName) : businessName;
+        if (rawCompany) {
+          // Map "Business Name" from the database to businessName for the frontend
+          businessName = rawCompany["Business Name"] || businessName;
+          companyId = rawCompany._id || companyId;
+        }
       }
 
       return {
         _id: record._id,
         company: {
-          _id: company._id,
-          businessName: businessName
+          _id: companyId,
+          businessName: businessName // Map to businessName for frontend consistency
         },
         submittedDate: record.submittedDate,
         status: record.status,
