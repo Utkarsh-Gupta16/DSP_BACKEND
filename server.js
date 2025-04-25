@@ -18,34 +18,67 @@ import countRoutes from "./routes/countRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import adminEmailRoutes from "./routes/adminEmailRoutes.js";
 import companyDetailsRoutes from "./routes/companyDetailsRoutes.js";
-import demoRoutes from "./routes/demoRoutes.js"; // Add this line
+import demoRoutes from "./routes/demoRoutes.js";
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Log incoming requests
 app.use((req, res, next) => {
   console.log(`Incoming request: ${req.method} ${req.url}`);
   next();
 });
 
-app.use(
-  cors({
-    origin: [
-      "https://dataselling.netlify.app",
-      "http://localhost:3000", 
-    ],
-    credentials: true,
-  })
-);
-app.use(express.json({ limit: "10mb" })); 
+// Parse FRONTEND_URL environment variable into an array
+const frontendUrls = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map(url => url.trim());
+
+// Log the allowed origins for debugging
+console.log("Allowed Origins from FRONTEND_URL:", frontendUrls);
+
+// Configure CORS with dynamic origins
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    // Check if the incoming origin is in the allowed list
+    if (frontendUrls.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Log the blocked origin for debugging
+    console.log(`Blocked origin: ${origin}`);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true, // Allow credentials (e.g., cookies, authorization headers)
+}));
+
+// Middleware to set Access-Control-Allow-Origin dynamically
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (frontendUrls.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  next();
+});
+
+// Handle preflight requests
+app.options("*", cors());
+
+app.use(express.json({ limit: "10mb" }));
 app.use(fileUpload());
 app.use(
   session({
     secret: process.env.JWT_SECRET_KEY || "fallback-secret",
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === "production" }, 
+    cookie: { secure: process.env.NODE_ENV === "production" },
   })
 );
 app.use(passport.initialize());
@@ -93,7 +126,7 @@ passport.deserializeUser(async (id, done) => {
 
 // Routes
 app.use("/api/users", userRoutes);
-app.use("/api/auth", authRoutes); 
+app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/companies", dataRoutes);
 app.use("/api/employees", employeeRoutes);
@@ -102,8 +135,8 @@ app.use("/api/categories", categoryRoutes);
 app.use(countRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/company-details", companyDetailsRoutes);
-app.use("/api/admin/email", adminEmailRoutes)
-app.use("/api/demo", demoRoutes); // Add this line
+app.use("/api/admin/email", adminEmailRoutes);
+app.use("/api/demo", demoRoutes);
 
 app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -122,7 +155,6 @@ const connectDB = async () => {
   }
 };
 
-// Start the Server
 const startServer = async () => {
   try {
     await connectDB();
