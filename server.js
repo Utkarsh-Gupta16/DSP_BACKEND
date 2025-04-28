@@ -24,53 +24,29 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-<<<<<<< HEAD
-// Log incoming requests
-=======
 // Log incoming requests for debugging
->>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
 app.use((req, res, next) => {
   console.log(`Incoming request: ${req.method} ${req.url} from origin: ${req.headers.origin}`);
   next();
 });
 
-<<<<<<< HEAD
-// Parse FRONTEND_URL environment variable into an array
-const frontendUrls = (process.env.FRONTEND_URL || "http://localhost:3000")
+// Parse FRONTEND_URL environment variable into an array (combining both approaches)
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000,https://dataselling.netlify.app,https://datasellingproject.netlify.app")
   .split(",")
   .map(url => url.trim());
 
-
 // Configure CORS with dynamic origins
-=======
-// Hardcode all frontend URLs
-const allowedOrigins = [
-  "https://dataselling.netlify.app",
-  "https://datasellingproject.netlify.app",
-  "http://localhost:3000",
-];
-
-// Configure CORS with the hardcoded origins
->>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g., mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
     // Check if the incoming origin is in the allowed list
-<<<<<<< HEAD
-    if (frontendUrls.includes(origin)) {
-      return callback(null, true);
-    }
-
-    // Log the blocked origin for debugging
-=======
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
     // Log blocked origins for debugging
->>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
     console.log(`Blocked origin: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
@@ -80,11 +56,7 @@ app.use(cors({
 // Middleware to set Access-Control-Allow-Origin dynamically
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-<<<<<<< HEAD
-  if (frontendUrls.includes(origin)) {
-=======
   if (allowedOrigins.includes(origin)) {
->>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -157,12 +129,11 @@ app.use("/api/companies", dataRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/email", emailRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use(countRoutes);
+app.use("/api/count", countRoutes); // Fixed: Added a path for countRoutes
 app.use("/api/payment", paymentRoutes);
-app.use("/api/company-details", companyDetailsRoutes);
+app.use("/api/company-details", companyDetailsRoutes); // Removed duplicate
 app.use("/api/admin/email", adminEmailRoutes);
 app.use("/api/demo", demoRoutes);
-app.use("/api/company-details", companyDetailsRoutes);
 app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
 });

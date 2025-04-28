@@ -13,7 +13,7 @@ const employeeGrowthSchema = new mongoose.Schema({
   period: {
     type: String,
     enum: ["employeeGrowth6Months", "employeeGrowth1Year", "employeeGrowth2Years"],
-    required: true,
+    required: false,
   },
   value: { type: String, default: "" },
 });

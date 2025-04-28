@@ -42,6 +42,7 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
   if (!Number.isInteger(totalCount) || totalCount < 0) {
     return res.status(400).json({ message: "totalCount must be a non-negative integer" });
   }
+
   if (!Number.isInteger(approvedCount) || approvedCount < 0) {
     return res.status(400).json({ message: "approvedCount must be a non-negative integer" });
   }
@@ -49,6 +50,7 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
   if (!Array.isArray(addOns)) {
     return res.status(400).json({ message: "addOns must be an array" });
   }
+
   const validAddOnKeys = new Set(Object.keys(allAddOnFields));
   for (const addOn of addOns) {
     if (typeof addOn !== "string" || !validAddOnKeys.has(addOn)) {
@@ -65,22 +67,50 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
     // Fetch all approved company details for the given orderId
     const approvedCompanyDetails = await CompanyDetails.find({ orderId, status: "approved" }).lean();
-
     if (approvedCompanyDetails.length === 0) {
       return res.status(404).json({ message: "No approved company details found for this order" });
     }
 
-<<<<<<< HEAD
-    // Map company data with details and process decision maker fields
-    const enrichedCompanies = companies.map(company => {
-      const detail = approvedCompanyDetails.find(d => d.companyId.equals(company._id));
-      const formData = detail?.formData || {};
-      const processedData = { ...company.toObject(), ...formData };
-      
+    // Extract companyIds as ObjectIds
+    const companyIds = approvedCompanyDetails.map(detail => detail.companyId);
+    if (companyIds.length === 0) {
+      return res.status(404).json({ message: "No company IDs found in approved company details." });
+    }
 
-      // Process predefined decision maker fields
+    // Fetch companies using Mongoose
+    const companies = await Company.find({ _id: { $in: companyIds } }).lean();
+    if (companies.length === 0) {
+      console.error("No companies found for companyIds:", companyIds);
+      return res.status(404).json({ message: "No companies found matching the approved company details. Check database consistency." });
+    }
+
+    // Enrich companies with details from CompanyDetails and process decision maker fields
+    const enrichedCompanies = companies.map(company => {
+      const detail = approvedCompanyDetails.find(d => d.companyId.toString() === company._id.toString());
+      const formData = detail?.formData || {};
+      const processedData = {
+        ...company,
+        ...formData,
+        "Business Name": company["Business Name"] || company.businessName || "Unknown",
+        Country: company.Country || "Unknown",
+        State: company.State || "Unknown",
+        City: company.City || "Unknown",
+        Address: company.Address || "Unknown",
+        Phone: company.Phone || "Unknown",
+        category: company.category || company.Categories || "Unknown",
+        subcategory: company.subcategory || "Unknown",
+        Categories: company.Categories || "Unknown",
+        Timezone: company.Timezone || "UTC",
+      };
+
+      // Process predefined decision maker fields (assuming array format)
       Object.keys(allAddOnFields).forEach(field => {
-        if (processedData[field] && Array.isArray(processedData[field]) && processedData[field].length > 0 && typeof processedData[field][0] === 'object') {
+        if (
+          processedData[field] &&
+          Array.isArray(processedData[field]) &&
+          processedData[field].length > 0 &&
+          typeof processedData[field][0] === 'object'
+        ) {
           processedData[field] = formatDecisionMaker(processedData[field][0]);
         }
       });
@@ -96,44 +126,10 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
 
       return processedData;
     });
-    
-    // Generate CSV content with base fields and order-specific add-ons
-    const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
-    
-=======
-    // Extract companyIds as strings to match the companies collection
-    const companyIds = approvedCompanyDetails.map(detail => detail.companyId.toString());
-
-    // Use raw MongoDB query to fetch companies with _id as string
-    const companies = await mongoose.connection.db.collection("companies").find({ _id: { $in: companyIds } }).toArray();
-
-    if (companies.length === 0) {
-      return res.status(404).json({ message: "No companies found matching the approved company details. Check database consistency." });
-    }
-
-    // Enrich companies with details from CompanyDetails
-    const enrichedCompanies = companies.map(company => {
-      const detail = approvedCompanyDetails.find(d => d.companyId.toString() === company._id.toString());
-      return {
-        ...company,
-        ...detail?.formData,
-        "Business Name": company["Business Name"] || company.businessName || "Unknown",
-        Country: company.Country || "Unknown",
-        State: company.State || "Unknown",
-        City: company.City || "Unknown",
-        Address: company.Address || "Unknown",
-        Phone: company.Phone || "Unknown",
-        category: company.category || company.Categories || "Unknown",
-        subcategory: company.subcategory || "Unknown",
-        Categories: company.Categories || "Unknown",
-        Timezone: company.Timezone || "UTC",
-      };
-    });
 
     // Generate CSV content
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
 
->>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
     const attachment = [
       {
         filename: `order_${orderId}_data.csv`,
@@ -165,6 +161,7 @@ DataSellingProject Team
 
     res.status(200).json({ message: "Email with CSV sent successfully" });
   } catch (error) {
+    console.error("Error sending order email:", error.message, error.stack);
     res.status(500).json({ message: "Failed to send email", error: error.message });
   }
 });
@@ -365,10 +362,12 @@ const generateCSV = (companies, totalCount, addOns) => {
 
         if (fieldValue === undefined || fieldValue === null) {
           formattedValue = '"not present"';
+        } else if (decisionMakerFields.has(field.value)) {
+          formattedValue = `"${fieldValue}"`; // Already formatted by formatDecisionMaker
         } else if (Array.isArray(fieldValue)) {
           formattedValue = `"${fieldValue.join(";")}"`;
         } else {
-          formattedValue = `"${fieldValue || ""}"`;
+          formattedValue = `"${fieldValue.toString().replace(/"/g, '""')}"`; // Escape quotes in CSV
         }
 
         return formattedValue;
