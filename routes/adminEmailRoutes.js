@@ -70,7 +70,37 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
       return res.status(404).json({ message: "No approved company details found for this order" });
     }
 
+<<<<<<< HEAD
+    // Map company data with details and process decision maker fields
+    const enrichedCompanies = companies.map(company => {
+      const detail = approvedCompanyDetails.find(d => d.companyId.equals(company._id));
+      const formData = detail?.formData || {};
+      const processedData = { ...company.toObject(), ...formData };
+      
 
+      // Process predefined decision maker fields
+      Object.keys(allAddOnFields).forEach(field => {
+        if (processedData[field] && Array.isArray(processedData[field]) && processedData[field].length > 0 && typeof processedData[field][0] === 'object') {
+          processedData[field] = formatDecisionMaker(processedData[field][0]);
+        }
+      });
+
+      // Process custom decision maker roles from additionalProperties
+      if (formData.additionalProperties) {
+        Object.entries(formData.additionalProperties).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+            processedData[key] = formatDecisionMaker(value[0]);
+          }
+        });
+      }
+
+      return processedData;
+    });
+    
+    // Generate CSV content with base fields and order-specific add-ons
+    const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
+    
+=======
     // Extract companyIds as strings to match the companies collection
     const companyIds = approvedCompanyDetails.map(detail => detail.companyId.toString());
 
@@ -103,6 +133,7 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     // Generate CSV content
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
 
+>>>>>>> 905b15a3ea247ef9fc74d9b7981371c9aa46652d
     const attachment = [
       {
         filename: `order_${orderId}_data.csv`,

@@ -169,6 +169,60 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
   }
 });
 
+// Get All Pending Company Details for Admin Approval
+router.get("/pending-approvals", authenticateToken, checkAdminRole, async (req, res) => {
+  try {
+    // Fetch all pending approvals
+    const pendingApprovals = await CompanyDetails.find({ status: "pending" })
+      .populate({
+        path: "companyId",
+        model: "Company",
+        select: "_id"
+      })
+      .populate({
+        path: "employeeId",
+        model: "User",
+        select: "name email"
+      })
+      .select("companyId employeeId submittedDate formData orderId");
+
+    if (!pendingApprovals || pendingApprovals.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    const transformedApprovals = await Promise.all(pendingApprovals.map(async (approval) => {
+      const company = approval.companyId || { _id: approval.companyId };
+      let businessName = `Unknown (ID: ${company._id})`;
+
+      // Fetch the raw document and map "Business Name" to businessName
+      if (company._id) {
+        const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
+        businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
+      }
+
+      return {
+        _id: approval._id,
+        companyId: {
+          _id: company._id,
+          businessName: businessName
+        },
+        employeeId: {
+          _id: approval.employeeId._id,
+          name: approval.employeeId.name || "Unknown",
+          email: approval.employeeId.email || "N/A"
+        },
+        submittedDate: approval.submittedDate,
+        formData: approval.formData,
+        orderId: approval.orderId
+      };
+    }));
+
+    res.status(200).json(transformedApprovals);
+  } catch (error) {
+    console.error("Error fetching all pending approvals:", error.message);
+    res.status(500).json({ message: "Failed to fetch pending approvals", error: error.message });
+  }
+});
 // Get Specific Pending Company Details by ID for Admin Approval
 router.get("/pending-approvals/:id", authenticateToken, async (req, res) => {
   try {
