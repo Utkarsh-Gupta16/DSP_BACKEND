@@ -139,7 +139,7 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/company-details", companyDetailsRoutes);
 app.use("/api/admin/email", adminEmailRoutes);
 app.use("/api/demo", demoRoutes);
-
+app.use("/api/company-details", companyDetailsRoutes);
 app.use("*", (req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
