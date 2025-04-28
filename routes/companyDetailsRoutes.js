@@ -39,23 +39,23 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     const { companyId, orderId, ...details } = req.body;
     const employeeId = req.user.id;
 
-    // Validate companyId format and convert to ObjectID
-    console.log("Received companyId:", companyId);
-    if (!mongoose.Types.ObjectId.isValid(companyId)) {
+    // Validate companyId format (still ensure it’s a valid hex string)
+    if (!companyId || !/^[0-9a-fA-F]{24}$/.test(companyId)) {
       console.log("Invalid companyId format:", companyId);
       return res.status(400).json({ message: "Invalid companyId format" });
     }
 
-    const objectId = new mongoose.Types.ObjectId(companyId);
 
-    // Validate companyId exists
-    let company = await Company.findOne({ _id: objectId });
-    console.log("Query result with ObjectId:", company);
+    // Query directly with the string companyId
+    let company = await Company.findOne({ _id: companyId });
+    console.log("Query result with string _id:", company);
 
     // Fallback to raw query if Mongoose fails
     if (!company) {
       console.log("Mongoose findOne failed, trying raw query...");
-      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: objectId });
+
+      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyId });
+      console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
         console.log("Company not found in raw query for _id:", objectId);
         return res.status(404).json({ message: "Company not found" });
@@ -193,64 +193,12 @@ router.get("/pending-approvals/:id", authenticateToken, async (req, res) => {
       })
       .select("companyId employeeId submittedDate formData orderId");
 
-    if (!approval) {
-      return res.status(404).json({ message: "Pending approval not found" });
-    }
 
-    // Transform data with separate query for raw "Business Name"
-    const company = approval.companyId || { _id: approval.companyId };
-    let businessName = `Unknown (ID: ${company._id})`;
-
-    // Fetch the raw document to get "Business Name"
-    if (company._id) {
-      const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-      businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
-    }
-
-    const transformedApproval = {
-      _id: approval._id,
-      companyId: {
-        _id: company._id,
-        businessName: businessName
-      },
-      employeeId: {
-        _id: approval.employeeId._id,
-        name: approval.employeeId.name || "Unknown",
-        email: approval.employeeId.email || "N/A"
-      },
-      submittedDate: approval.submittedDate,
-      formData: approval.formData,
-      orderId: approval.orderId
-    };
-
-    res.status(200).json(transformedApproval);
-  } catch (error) {
-    console.error("Error fetching specific pending approval:", error.message);
-    res.status(500).json({ message: "Failed to fetch pending approval", error: error.message });
-  }
-});
-// Get Pending Company Details for Admin Approval
-router.get("/pending-approvals", authenticateToken, async (req, res) => {
-  try {
-    const pendingApprovals = await CompanyDetails.find({ status: "pending" })
-      .populate({
-        path: "companyId",
-        model: "Company",
-        select: "_id"
-      })
-      .populate({
-        path: "employeeId",
-        model: "User",
-        select: "name email"
-      })
-      .select("companyId employeeId submittedDate formData orderId");
-
-    // Transform data with separate query for raw "Business Name"
     const transformedApprovals = await Promise.all(pendingApprovals.map(async (approval) => {
       const company = approval.companyId || { _id: approval.companyId };
       let businessName = `Unknown (ID: ${company._id})`;
 
-      // Fetch the raw document to get "Business Name"
+      // Fetch the raw document and map "Business Name" to businessName
       if (company._id) {
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
         businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
@@ -260,7 +208,7 @@ router.get("/pending-approvals", authenticateToken, async (req, res) => {
         _id: approval._id,
         companyId: {
           _id: company._id,
-          businessName: businessName
+          businessName: businessName // Ensure this matches the frontend expectation
         },
         employeeId: {
           _id: approval.employeeId._id,
@@ -374,14 +322,16 @@ router.get("/employee-history", authenticateToken, async (req, res) => {
       .populate({
         path: "companyId",
         model: "Company",
-        select: "businessName _id"
+        select: "_id businessName"
       })
       .select("companyId submittedDate status approvedAt formData");
 
-    // Transform the data to include businessName
     const transformedHistory = history.map((record) => {
-      const companyIdStr = record.companyId?._id.toString();
-      const businessName = record.companyId?.businessName || `Unknown (ID: ${record.companyId?._id || 'N/A'})`;
+      let businessName = `Unknown (ID: ${record.companyId?._id || 'N/A'})`;
+      if (record.companyId?._id) {
+        const rawCompany = mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(record.companyId._id) });
+        businessName = rawCompany?.["Business Name"] || businessName;
+      }
       return {
         ...record.toObject(),
         companyId: {
@@ -402,30 +352,50 @@ router.get("/employee-history", authenticateToken, async (req, res) => {
 router.get("/employee-history-with-companies", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
+    console.log("Fetching history for employeeId:", employeeId); // Log the employeeId
+
     const history = await CompanyDetails.find({ employeeId })
       .populate({
         path: "companyId",
         model: "Company",
-        select: "_id"
-      })
+        select: "_id" // We’ll fetch the raw data anyway, so just get the ID for now     
+         })
       .select("companyId submittedDate status approvedAt formData");
 
-    // Transform data with separate query for raw "Business Name"
-    const transformedHistory = await Promise.all(history.map(async (record) => {
-      const company = record.companyId || { _id: record.companyId };
-      let businessName = `Unknown (ID: ${company._id})`;
+    console.log("Raw history records:", JSON.stringify(history, null, 2)); // Log the raw history data
 
-      // Fetch the raw document to get "Business Name"
+    const transformedHistory = await Promise.all(history.map(async (record) => {
+      let company = record.companyId || { _id: record.companyId };
+      let businessName = `Unknown (ID: ${company._id || 'N/A'})`;
+      let companyId = company._id || "N/A";
+
+      console.log("Processing record with companyId:", company._id); // Log the companyId for this record
+
       if (company._id) {
-        const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-        businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
+        try {
+          const objectId = new mongoose.Types.ObjectId(company._id);
+          const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: objectId });
+          
+          console.log("Raw company data for ID", company._id, ":", rawCompany); // Log the raw company data
+
+          if (rawCompany && rawCompany["Business Name"]) {
+            businessName = rawCompany["Business Name"];
+            companyId = rawCompany._id.toString();
+          } else {
+            console.error(`No "Business Name" found for company ID: ${company._id}`);
+          }
+        } catch (error) {
+          console.error(`Error fetching raw company data for ID ${company._id}:`, error.message);
+        }
+      } else {
+        console.warn(`No company ID found for record: ${record._id}`);
       }
 
       return {
         _id: record._id,
         company: {
-          _id: company._id,
-          "Business Name": businessName
+          _id: companyId,
+          businessName: businessName
         },
         submittedDate: record.submittedDate,
         status: record.status,
@@ -434,12 +404,14 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       };
     }));
 
+    console.log("Transformed history:", JSON.stringify(transformedHistory, null, 2)); // Log the final transformed data
     res.status(200).json(transformedHistory);
   } catch (error) {
-    console.error("Error fetching employee history with companies:", error.message);
+    console.error("Error fetching employee history with companies:", error.message, error.stack);
     res.status(500).json({ message: "Failed to fetch history", error: error.message });
   }
 });
+
 
 router.get("/submitted-companies", authenticateToken, async (req, res) => {
   try {
