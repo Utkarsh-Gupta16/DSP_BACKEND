@@ -62,8 +62,6 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
   }
 
   try {
-    console.log("✔ Preparing CSV and email for:", { orderId, email, userName, totalCount, approvedCount, addOns });
-
     // Fetch the order to validate existence
     const order = await Order.findById(orderId);
     if (!order) {
@@ -77,14 +75,35 @@ router.post("/send-order-email", authenticateToken, checkAdminRole, async (req, 
     // Fetch corresponding companies
     const companies = await Company.find({ _id: { $in: companyIds } });
 
-    // Map company data with details
+    // Map company data with details and process decision maker fields
     const enrichedCompanies = companies.map(company => {
       const detail = approvedCompanyDetails.find(d => d.companyId.equals(company._id));
-      return { ...company.toObject(), ...detail?.formData };
-    });
+      const formData = detail?.formData || {};
+      const processedData = { ...company.toObject(), ...formData };
+      
 
+      // Process predefined decision maker fields
+      Object.keys(allAddOnFields).forEach(field => {
+        if (processedData[field] && Array.isArray(processedData[field]) && processedData[field].length > 0 && typeof processedData[field][0] === 'object') {
+          processedData[field] = formatDecisionMaker(processedData[field][0]);
+        }
+      });
+
+      // Process custom decision maker roles from additionalProperties
+      if (formData.additionalProperties) {
+        Object.entries(formData.additionalProperties).forEach(([key, value]) => {
+          if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+            processedData[key] = formatDecisionMaker(value[0]);
+          }
+        });
+      }
+
+      return processedData;
+    });
+    
     // Generate CSV content with base fields and order-specific add-ons
     const csvContent = generateCSV(enrichedCompanies, totalCount, addOns);
+    
     const attachment = [
       {
         filename: `order_${orderId}_data.csv`,
@@ -114,122 +133,166 @@ DataSellingProject Team
       attachments: attachment,
     });
 
-    console.log(`✔ Email sent to ${email}`);
     res.status(200).json({ message: "Email with CSV sent successfully" });
-
   } catch (error) {
-    console.error("❌ Error in send-order-email endpoint:", error.message);
     res.status(500).json({ message: "Failed to send email", error: error.message });
   }
 });
 
 // CSV Generator with base fields and order-specific add-ons
 const allAddOnFields = {
-  website: "website",
-  mailIds: "mailIds",
-  linkedinProfile: "linkedinProfile",
-  headquarterAddress: "headquarterAddress",
-  foundationYear: "foundationYear",
-  presentInCountries: "presentInCountries",
-  locationOfEachCountryOffice: "locationOfEachCountryOffice",
-  businessDevelopmentManager: "businessDevelopmentManager",
-  cco: "cco",
-  cdo: "cdo",
-  ceo: "ceo",
-  cfo: "cfo",
-  chro: "chro",
-  cio: "cio",
-  ciso: "ciso",
-  cmo: "cmo",
-  coFounder: "coFounder",
-  coo: "coo",
-  cpo: "cpo",
-  cro: "cro",
-  cso: "cso",
-  cto: "cto",
-  customerSuccessManager: "customerSuccessManager",
-  cxo: "cxo",
-  cybersecurityDirector: "cybersecurityDirector",
-  cybersecurityManager: "cybersecurityManager",
-  devOpsManager: "devOpsManager",
-  directorOfBusinessDevelopment: "directorOfBusinessDevelopment",
-  directorOfDigitalMarketing: "directorOfDigitalMarketing",
-  directorOfFinance: "directorOfFinance",
-  directorOfHr: "directorOfHr",
-  directorOfIt: "directorOfIt",
-  directorOfMarketing: "directorOfMarketing",
-  directorOfOperations: "directorOfOperations",
-  directorOfProcurement: "directorOfProcurement",
-  directorOfProductManagement: "directorOfProductManagement",
-  directorOfSales: "directorOfSales",
-  directorOfStrategy: "directorOfStrategy",
-  directorOfSupplyChain: "directorOfSupplyChain",
-  directorOfTalentAcquisition: "directorOfTalentAcquisition",
-  ecommerceDirector: "ecommerceDirector",
-  ecommerceManager: "ecommerceManager",
-  evp: "evp",
-  financeAccounting: "financeAccounting",
-  financeDirector: "financeDirector",
-  financialController: "financialController",
-  founder: "founder",
-  founderCoFounder: "founderCoFounder",
-  gm: "gm",
-  headOfBusinessDevelopment: "headOfBusinessDevelopment",
-  headOfCloudInfrastructure: "headOfCloudInfrastructure",
-  headOfCustomerSuccess: "headOfCustomerSuccess",
-  headOfDigitalTransformation: "headOfDigitalTransformation",
-  headOfGrowthStrategy: "headOfGrowthStrategy",
-  headOfHr: "headOfHr",
-  headOfIt: "headOfIt",
-  headOfItInfrastructure: "headOfItInfrastructure",
-  headOfManufacturing: "headOfManufacturing",
-  headOfMarketing: "headOfMarketing",
-  headOfMarketplaceManagement: "headOfMarketplaceManagement",
-  headOfPartnerships: "headOfPartnerships",
-  headOfPerformanceMarketing: "headOfPerformanceMarketing",
-  headOfPropertyManagement: "headOfPropertyManagement",
-  headOfSales: "headOfSales",
-  headOfSeoPpcSocialMedia: "headOfSeoPpcSocialMedia",
-  headOfSoftwareDevelopment: "headOfSoftwareDevelopment",
-  headOfStrategy: "headOfStrategy",
-  hrBusinessPartner: "hrBusinessPartner",
-  investmentManager: "investmentManager",
-  itDirector: "itDirector",
-  itManager: "itManager",
-  technologyManager: "technologyManager",
-  managingBroker: "managingBroker",
-  md: "md",
-  marketingManager: "marketingManager",
-  operationsManager: "operationsManager",
-  owner: "owner",
-  partner: "partner",
-  performanceMarketingManager: "performanceMarketingManager",
-  president: "president",
-  principal: "principal",
-  procurementManager: "procurementManager",
-  productManager: "productManager",
-  realEstateDeveloper: "realEstateDeveloper",
-  riskComplianceOfficer: "riskComplianceOfficer",
-  salesManager: "salesManager",
-  securityManager: "securityManager",
-  seniorBusinessDevelopmentManager: "seniorBusinessDevelopmentManager",
-  seniorItManager: "seniorItManager",
-  seniorMarketingManager: "seniorMarketingManager",
-  seniorProcurementManager: "seniorProcurementManager",
-  seniorVicePresident: "seniorVicePresident",
-  supplyChainManager: "supplyChainManager",
-  vpBusinessDevelopment: "vpBusinessDevelopment",
-  vpCustomerSuccess: "vpCustomerSuccess",
-  vpEngineering: "vpEngineering",
-  vpFinance: "vpFinance",
-  vpIt: "vpIt",
-  vpMarketing: "vpMarketing",
-  vpOperations: "vpOperations",
-  vpSales: "vpSales",
-  vpStrategy: "vpStrategy",
-  vpTechnology: "vpTechnology",
-  vpHr: "vpHr",
-  vpProduct: "vpProduct",
+  website: "Website",
+  mailIds: "Mail IDs",
+  linkedinProfile: "LinkedIn Profile",
+  headquarterAddress: "Headquarter Address",
+  foundationYear: "Foundation Year",
+  presentInCountries: "Present in Countries",
+  locationOfEachCountryOffice: "Location of Each Country Office",
+  businessDevelopmentManager: "Business Development Manager",
+  cco: "CCO",
+  cdo: "CDO",
+  ceo: "CEO",
+  cfo: "CFO",
+  chro: "CHRO",
+  cio: "CIO",
+  ciso: "CISO",
+  cmo: "CMO",
+  coFounder: "Co-Founder",
+  coo: "COO",
+  cpo: "CPO",
+  cro: "CRO",
+  cso: "CSO",
+  cto: "CTO",
+  customerSuccessManager: "Customer Success Manager",
+  cxo: "CXO",
+  cybersecurityDirector: "Cybersecurity Director",
+  cybersecurityManager: "Cybersecurity Manager",
+  devOpsManager: "DevOps Manager",
+  directorOfBusinessDevelopment: "Director of Business Development",
+  directorOfDigitalMarketing: "Director of Digital Marketing",
+  directorOfFinance: "Director of Finance",
+  directorOfHr: "Director of HR",
+  directorOfIt: "Director of IT",
+  directorOfMarketing: "Director of Marketing",
+  directorOfOperations: "Director of Operations",
+  directorOfProcurement: "Director of Procurement",
+  directorOfProductManagement: "Director of Product Management",
+  directorOfSales: "Director of Sales",
+  directorOfStrategy: "Director of Strategy",
+  directorOfSupplyChain: "Director of Supply Chain",
+  directorOfTalentAcquisition: "Director of Talent Acquisition",
+  ecommerceDirector: "Ecommerce Director",
+  ecommerceManager: "Ecommerce Manager",
+  evp: "EVP",
+  financeAccounting: "Finance Accounting",
+  financeDirector: "Finance Director",
+  financialController: "Financial Controller",
+  founder: "Founder",
+  founderCoFounder: "Founder/Co-Founder",
+  gm: "GM",
+  headOfBusinessDevelopment: "Head of Business Development",
+  headOfCloudInfrastructure: "Head of Cloud Infrastructure",
+  headOfCustomerSuccess: "Head of Customer Success",
+  headOfDigitalTransformation: "Head of Digital Transformation",
+  headOfGrowthStrategy: "Head of Growth Strategy",
+  headOfHr: "Head of HR",
+  headOfIt: "Head of IT",
+  headOfItInfrastructure: "Head of IT Infrastructure",
+  headOfManufacturing: "Head of Manufacturing",
+  headOfMarketing: "Head of Marketing",
+  headOfMarketplaceManagement: "Head of Marketplace Management",
+  headOfPartnerships: "Head of Partnerships",
+  headOfPerformanceMarketing: "Head of Performance Marketing",
+  headOfPropertyManagement: "Head of Property Management",
+  headOfSales: "Head of Sales",
+  headOfSeoPpcSocialMedia: "Head of SEO/PPC/Social Media",
+  headOfSoftwareDevelopment: "Head of Software Development",
+  headOfStrategy: "Head of Strategy",
+  hrBusinessPartner: "HR Business Partner",
+  investmentManager: "Investment Manager",
+  itDirector: "IT Director",
+  itManager: "IT Manager",
+  technologyManager: "Technology Manager",
+  managingBroker: "Managing Broker",
+  md: "MD",
+  marketingManager: "Marketing Manager",
+  operationsManager: "Operations Manager",
+  owner: "Owner",
+  partner: "Partner",
+  performanceMarketingManager: "Performance Marketing Manager",
+  president: "President",
+  principal: "Principal",
+  procurementManager: "Procurement Manager",
+  productManager: "Product Manager",
+  realEstateDeveloper: "Real Estate Developer",
+  riskComplianceOfficer: "Risk Compliance Officer",
+  salesManager: "Sales Manager",
+  securityManager: "Security Manager",
+  seniorBusinessDevelopmentManager: "Senior Business Development Manager",
+  seniorItManager: "Senior IT Manager",
+  seniorMarketingManager: "Senior Marketing Manager",
+  seniorProcurementManager: "Senior Procurement Manager",
+  seniorVicePresident: "Senior Vice President",
+  supplyChainManager: "Supply Chain Manager",
+  vpBusinessDevelopment: "VP Business Development",
+  vpCustomerSuccess: "VP Customer Success",
+  vpEngineering: "VP Engineering",
+  vpFinance: "VP Finance",
+  vpIt: "VP IT",
+  vpMarketing: "VP Marketing",
+  vpOperations: "VP Operations",
+  vpSales: "VP Sales",
+  vpStrategy: "VP Strategy",
+  vpTechnology: "VP Technology",
+  vpHr: "VP HR",
+  vpProduct: "VP Product",
+};
+
+// Define decision maker fields to identify them
+const decisionMakerFields = new Set([
+  "businessDevelopmentManager", "cco", "cdo", "ceo", "cfo", "chro", "cio", "ciso", "cmo",
+  "coFounder", "coo", "cpo", "cro", "cso", "cto", "customerSuccessManager", "cxo",
+  "cybersecurityDirector", "cybersecurityManager", "devOpsManager", "directorOfBusinessDevelopment",
+  "directorOfDigitalMarketing", "directorOfFinance", "directorOfHr", "directorOfIt",
+  "directorOfMarketing", "directorOfOperations", "directorOfProcurement", "directorOfProductManagement",
+  "directorOfSales", "directorOfStrategy", "directorOfSupplyChain", "directorOfTalentAcquisition",
+  "ecommerceDirector", "ecommerceManager", "evp", "financeAccounting", "financeDirector",
+  "financialController", "founder", "founderCoFounder", "gm", "headOfBusinessDevelopment",
+  "headOfCloudInfrastructure", "headOfCustomerSuccess", "headOfDigitalTransformation",
+  "headOfGrowthStrategy", "headOfHr", "headOfIt", "headOfItInfrastructure", "headOfManufacturing",
+  "headOfMarketing", "headOfMarketplaceManagement", "headOfPartnerships", "headOfPerformanceMarketing",
+  "headOfPropertyManagement", "headOfSales", "headOfSeoPpcSocialMedia", "headOfSoftwareDevelopment",
+  "headOfStrategy", "hrBusinessPartner", "investmentManager", "itDirector", "itManager",
+  "technologyManager", "managingBroker", "md", "marketingManager", "operationsManager", "owner",
+  "partner", "performanceMarketingManager", "president", "principal", "procurementManager",
+  "productManager", "realEstateDeveloper", "riskComplianceOfficer", "salesManager", "securityManager",
+  "seniorBusinessDevelopmentManager", "seniorItManager", "seniorMarketingManager",
+  "seniorProcurementManager", "seniorVicePresident", "supplyChainManager", "vpBusinessDevelopment",
+  "vpCustomerSuccess", "vpEngineering", "vpFinance", "vpIt", "vpMarketing", "vpOperations",
+  "vpSales", "vpStrategy", "vpTechnology", "vpHr", "vpProduct",
+]);
+
+// Function to format decision maker object into desired string with beautified labels
+const formatDecisionMaker = (decisionMaker) => {
+  if (!decisionMaker || Object.keys(decisionMaker).length === 0) {
+    return "not present";
+  }
+  // Only include name, email, phoneNumber, and linkedinProfile if they exist
+  const allowedFields = {
+    name: "Name",
+    email: "Email",
+    phoneNumber: "Phone Number",
+    linkedinProfile: "LinkedIn Profile"
+  };
+  const filteredDecisionMaker = {};
+  Object.keys(allowedFields).forEach(field => {
+    if (decisionMaker[field] !== undefined) {
+      filteredDecisionMaker[field] = decisionMaker[field];
+    }
+  });
+  return Object.entries(filteredDecisionMaker)
+    .map(([key, value]) => `${allowedFields[key]}: '${value || ''}'`)
+    .join(", ");
 };
 
 const generateCSV = (companies, totalCount, addOns) => {
@@ -249,7 +312,12 @@ const generateCSV = (companies, totalCount, addOns) => {
 
   // Filter add-on fields based on what was selected in the order
   const selectedAddOnFields = addOns
-    .map(addOn => (allAddOnFields[addOn] ? { label: addOn, value: allAddOnFields[addOn] } : null))
+    .map(addOn => {
+      if (allAddOnFields[addOn]) {
+        return { label: allAddOnFields[addOn], value: addOn };
+      }
+      return null;
+    })
     .filter(field => field);
 
   // Combine base fields and selected add-ons
@@ -262,7 +330,7 @@ const generateCSV = (companies, totalCount, addOns) => {
   const rows = companies.map(company => {
     return allFields
       .map(field => {
-        const fieldValue = company[field.value];
+        let fieldValue = company[field.value];
         let formattedValue;
 
         if (fieldValue === undefined || fieldValue === null) {
@@ -270,7 +338,7 @@ const generateCSV = (companies, totalCount, addOns) => {
         } else if (Array.isArray(fieldValue)) {
           formattedValue = `"${fieldValue.join(";")}"`;
         } else {
-          formattedValue = `"${fieldValue}"`;
+          formattedValue = `"${fieldValue || ""}"`;
         }
 
         return formattedValue;

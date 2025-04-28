@@ -3,8 +3,8 @@ import Stripe from "stripe";
 import { Order } from "../models/orderModel.js";
 import { User } from "../models/userModel.js";
 import { Company } from "../models/companyModel.js";
-import Task  from "../models/taskModel.js";
-import AssignedCompanies from "../models/assignedCompaniesModel.js"; // Corrected import
+import Task from "../models/taskModel.js";
+import AssignedCompanies from "../models/assignedCompaniesModel.js";
 import CompanyDetails from "../models/companyDetailsModel.js";
 import jwt from "jsonwebtoken";
 import { Parser } from "json2csv";
@@ -50,6 +50,17 @@ const checkAdminRole = (req, res, next) => {
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
+// Function to calculate the next working day (excluding weekends)
+const getNextWorkingDay = (startDate) => {
+  const date = new Date(startDate);
+  date.setDate(date.getDate() + 1); // Start with the next day
+  // If the next day is Saturday (6) or Sunday (0), move to Monday
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
+};
+
 // Refresh token endpoint
 router.post("/refresh-token", async (req, res) => {
   const authHeader = req.headers["authorization"];
@@ -65,17 +76,13 @@ router.post("/refresh-token", async (req, res) => {
   }
 
   try {
-    // Verify the token, ignoring expiration
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY, { ignoreExpiration: true });
     console.log("Token decoded for refresh:", decoded);
-
-    // Issue a new token with a fresh expiration time (e.g., 1 day)
     const newToken = jwt.sign(
       { id: decoded.id, role: decoded.role },
       process.env.JWT_SECRET_KEY,
       { expiresIn: process.env.JWT_EXPIRE || "1d" }
     );
-
     console.log("New token issued:", newToken);
     res.status(200).json({ token: newToken });
   } catch (error) {
@@ -96,9 +103,9 @@ router.post("/create-payment-intent", authenticateToken, async (req, res) => {
     }
 
     const threshold = 100000;
-    const rateFirstTier = 0.01;
-    const rateSecondTier = 0.005;
-    const addonRate = 0.01;
+    const rateFirstTier = 0.5;
+    const rateSecondTier = 0.25;
+    const addonRate = 0.1;
 
     let basePrice;
     if (totalCount <= threshold) {
@@ -257,6 +264,10 @@ router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req,
     // Calculate endIndex
     const endIndex = effectiveStartIndex + companies.length - 1;
 
+    // Calculate submitTillDate as the next working day
+    const assignedDate = new Date();
+    const submitTillDate = getNextWorkingDay(assignedDate);
+
     // Create a new task
     const newTask = new Task({
       orderId,
@@ -270,11 +281,13 @@ router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req,
         companyDetails: company.companyDetails,
       })),
       status: "pending",
+      assignedDate,
+      submitTillDate, // Dynamically calculated
     });
 
     await newTask.save();
 
-    console.log(`Assigned ${companies.length} companies to employee ${employeeId} with range ${effectiveStartIndex + 1} to ${endIndex + 1}.`);
+    console.log(`Assigned ${companies.length} companies to employee ${employeeId} with range ${effectiveStartIndex + 1} to ${endIndex + 1}. Submit till date: ${submitTillDate}`);
     res.status(200).json({ task: newTask });
   } catch (error) {
     console.error("Error assigning task:", error.message, error.stack);
@@ -288,10 +301,10 @@ router.get("/admin/assigned-companies", authenticateToken, checkAdminRole, async
     const assignedTasks = await Task.aggregate([
       {
         $group: {
-          _id: "$orderId", // Group by orderId to get total per order
+          _id: "$orderId",
           totalCompaniesAssigned: { $sum: "$companyCount" },
           taskCount: { $sum: 1 },
-          employeeIds: { $push: "$employeeId" }, // Track associated employees
+          employeeIds: { $push: "$employeeId" },
         },
       },
       {
@@ -306,14 +319,13 @@ router.get("/admin/assigned-companies", authenticateToken, checkAdminRole, async
   }
 });
 
-// Inside paymentRoutes.js, add this new endpoint
 router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     console.log("Fetching pending approvals for admin:", req.user.id);
     const pendingApprovals = await CompanyDetails.find({ status: "pending" })
       .populate("companyId")
       .populate("employeeId", "name email")
-      .populate("orderId", "userId email userName") // Populate order details
+      .populate("orderId", "userId email userName")
       .lean();
     console.log("Fetched pending approvals:", pendingApprovals);
     res.status(200).json(pendingApprovals);
@@ -330,7 +342,6 @@ router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async 
       .populate("companyId")
       .populate("employeeId", "name email")
       .lean();
-
     console.log("Fetched pending approvals:", pendingApprovals);
     res.status(200).json(pendingApprovals);
   } catch (error) {
@@ -339,11 +350,10 @@ router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async 
   }
 });
 
-// Add an endpoint to update the approval status
 router.put("/admin/approve-company-details/:companyDetailId", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const { companyDetailId } = req.params;
-    const { status, returnToEmployee } = req.body; // Add returnToEmployee from request
+    const { status, returnToEmployee } = req.body;
     const validStatuses = ["approved", "rejected"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
@@ -351,10 +361,10 @@ router.put("/admin/approve-company-details/:companyDetailId", authenticateToken,
 
     const updatedApproval = await CompanyDetails.findByIdAndUpdate(
       companyDetailId,
-      { 
-        status, 
+      {
+        status,
         approvedDate: status === "approved" ? new Date() : undefined,
-        returnToEmployee: returnToEmployee || false // Store if it should go back to employee
+        returnToEmployee: returnToEmployee || false
       },
       { new: true, runValidators: true }
     );
@@ -364,13 +374,10 @@ router.put("/admin/approve-company-details/:companyDetailId", authenticateToken,
 
     console.log(`Updated approval status for ${companyDetailId} to ${status}`);
 
-    // If rejected and returnToEmployee is true, update the task and notify the employee
     if (status === "rejected" && returnToEmployee) {
       const task = await Task.findOne({ companyIds: updatedApproval.companyId });
       if (task) {
-        // Mark the company as pending for refill (you can add a field like `pendingRefill` to Task or CompanyDetails)
         await CompanyDetails.findByIdAndUpdate(companyDetailId, { pendingRefill: true });
-        // Optionally, send an email or notification to the employee
         const employeeEmail = updatedApproval.employeeId.email;
         await sendEmail({
           to: employeeEmail,
@@ -388,8 +395,6 @@ router.put("/admin/approve-company-details/:companyDetailId", authenticateToken,
   }
 });
 
-
-
 router.get("/task/:taskId", authenticateToken, async (req, res) => {
   try {
     const task = await Task.findById(req.params.taskId).populate("orderId");
@@ -400,11 +405,10 @@ router.get("/task/:taskId", authenticateToken, async (req, res) => {
   }
 });
 
-// Add this near the other router.get endpoints
 router.get("/admin/tasks", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     console.log("Fetching all tasks for admin:", req.user.id);
-    const tasks = await Task.find().lean(); // Use .lean() to get plain JavaScript objects
+    const tasks = await Task.find().lean();
     console.log("Fetched tasks:", tasks);
     res.status(200).json(tasks);
   } catch (error) {
@@ -426,7 +430,7 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
     const tasks = await Task.find(tasksQuery).populate("orderId");
     if (!tasks || tasks.length === 0) {
       console.log("No tasks found for employee:", req.user.id);
-      return res.status(200).json([]); // Return empty array instead of 500
+      return res.status(200).json([]);
     }
 
     const companyQueries = tasks.map(async (task) => {
@@ -434,7 +438,6 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
       const query = {};
       if (order.filters.categories?.length > 0) query.category = { $in: order.filters.categories };
       if (order.filters.subcategories?.length > 0) {
-        // Normalize subcategories to match the stored format
         const normalizedSubcategories = order.filters.subcategories.map(subcat =>
           subcat.split(":").pop().trim()
         );
@@ -496,7 +499,7 @@ router.get("/employee/tasks", authenticateToken, async (req, res) => {
     const employeeId = req.user.id;
     const tasks = await Task.find({ employeeId })
       .select("orderId companyCount startIndex endIndex assignedDate submitTillDate")
-      .populate("orderId", "userId email userName"); // Ensure orderId is populated
+      .populate("orderId", "userId email userName");
     res.status(200).json(tasks);
   } catch (error) {
     console.error("Error fetching employee tasks:", error.message);
@@ -518,12 +521,10 @@ router.post("/task/:taskId/company", authenticateToken, async (req, res) => {
   }
 });
 
-// Updated endpoint to count companies
 router.post("/count-companies", authenticateToken, async (req, res) => {
   try {
     const { query } = req.body;
 
-    // Normalize filters
     const normalizedCategories = query.categories?.length > 0
       ? query.categories.map(cat => cat.trim())
       : [];
@@ -534,7 +535,6 @@ router.post("/count-companies", authenticateToken, async (req, res) => {
       ? query.subSubcategories.map(subSubcat => subSubcat.split(":").pop().trim())
       : [];
 
-    // Construct normalized query
     const normalizedQuery = {
       ...(normalizedCategories.length > 0 && { category: { $in: normalizedCategories } }),
       ...(normalizedSubcategories.length > 0 && { subcategory: { $in: normalizedSubcategories } }),
@@ -546,7 +546,6 @@ router.post("/count-companies", authenticateToken, async (req, res) => {
 
     console.log("Count-companies query:", JSON.stringify(normalizedQuery, null, 2));
 
-    // Count matching companies
     const count = await Company.countDocuments(normalizedQuery);
     console.log("Counted companies:", count);
 
@@ -557,7 +556,6 @@ router.post("/count-companies", authenticateToken, async (req, res) => {
   }
 });
 
-// Add this to paymentRoute.js
 router.post("/generate-and-send-csv", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const { orderId, email, userName, totalCount } = req.body;
@@ -566,7 +564,6 @@ router.post("/generate-and-send-csv", authenticateToken, checkAdminRole, async (
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // Reuse processPaymentInBackground logic for CSV generation
     await processPaymentInBackground(order, order.filters, totalCount, order.price, order.selectedAddons || []);
 
     res.status(200).json({ message: "CSV generation and email sending initiated" });
@@ -615,7 +612,6 @@ router.put("/admin/update-order-status/:orderId", authenticateToken, checkAdminR
   }
 });
 
-// Utility to promisify fs.writeStream close
 const closeWriteStream = (writeStream) => {
   return new Promise((resolve, reject) => {
     writeStream.on("finish", resolve);
@@ -624,7 +620,6 @@ const closeWriteStream = (writeStream) => {
   });
 };
 
-// Background task to either send notification or process CSV based on add-ons
 const processPaymentInBackground = async (order, filters, totalCount, price, selectedAddons) => {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -633,8 +628,7 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
     console.log("Starting background task for order:", order._id);
 
     if (selectedAddons.length > 0) {
-      // Case 1: Add-ons selected, calculate dynamic delivery days
-      const deliveryDays = Math.ceil(totalCount / 1000); // Number of companies / 1000, rounded up
+      const deliveryDays = Math.ceil(totalCount / 1000);
       const emailSubject = "Payment Confirmation - Data Delivery in Progress";
       const emailText = `Dear ${order.userName || "Customer"},\n\nThank you for your purchase! Your payment has been successfully processed.\n\nOrder Details:\n- Total Companies: ${totalCount}\n- Total Price: $${price}\n- Selected Add-Ons: ${selectedAddons.join(", ") || "None"}\n\nYour company data, including the requested add-ons, is being prepared and will be sent to you via email as a CSV or ZIP file within ${deliveryDays} days. We appreciate your patience.\n\nIf you have any questions, please contact support.\n\nBest regards,\nYour Team`;
       await sendEmail({
@@ -645,11 +639,10 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
 
       console.log("Notification email sent to:", order.email);
 
-      // Send admin notification email
       const adminEmailSubject = "New Order with Add-Ons - Action Required";
       const adminEmailText = `Dear Admin,\n\nA new order with add-ons has been placed. Please prepare the data accordingly.\n\nOrder Details:\n- Order ID: ${order._id}\n- User Email: ${order.email}\n- User Name: ${order.userName || "N/A"}\n- Total Companies: ${totalCount}\n- Total Price: $${price}\n- Selected Add-Ons: ${selectedAddons.join(", ") || "None"}\n- Categories: ${filters.categories?.join(", ") || "None"}\n- Subcategories: ${filters.subcategories?.join(", ") || "None"}\n- Sub-Subcategories: ${filters.subSubcategories?.join(", ") || "None"}\n- Delivery Days: ${deliveryDays}\n\nPlease ensure the data is prepared and delivered within ${deliveryDays} days.\n\nBest regards,\nData Selling Team`;
       await sendEmail({
-        to: process.env.ADMIN_EMAIL || "admin@example.com", // Fallback to a default email
+        to: process.env.ADMIN_EMAIL || "admin@example.com",
         subject: adminEmailSubject,
         text: adminEmailText,
       });
@@ -659,7 +652,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       await Order.findByIdAndUpdate(order._id, { status: "pending_delivery" });
       console.log("Order status updated to pending_delivery for order:", order._id);
     } else {
-      // Case 2: No add-ons, proceed with CSV generation and immediate delivery
       const orConditions = [];
       if (filters.categories?.length > 0) {
         filters.categories.forEach(cat => {
@@ -961,7 +953,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
   }
 };
 
-// Handle payment submission
 router.post("/submit", authenticateToken, async (req, res) => {
   try {
     console.log("Received /api/payment/submit request:", req.body);
@@ -973,9 +964,9 @@ router.post("/submit", authenticateToken, async (req, res) => {
     }
 
     const threshold = 100000;
-    const rateFirstTier = 0.01;
-    const rateSecondTier = 0.005;
-    const addonRate = 0.01;
+    const rateFirstTier = 0.5;
+    const rateSecondTier = 0.25;
+    const addonRate = 0.1;
 
     let expectedBasePrice;
     if (totalCount <= threshold) {
@@ -990,7 +981,7 @@ router.post("/submit", authenticateToken, async (req, res) => {
     const expectedAddonCost = totalCount * addonRate * selectedAddons.length;
     const expectedPrice = parseFloat((expectedBasePrice + expectedAddonCost).toFixed(2));
     const receivedPrice = parseFloat(price);
-    if (Math.abs(expectedPrice - receivedPrice) > 0.01) {
+    if (Math.abs(expectedPrice - receivedPrice) > 0.5) {
       console.log("Price mismatch:", { expectedPrice, receivedPrice });
       return res.status(400).json({ message: "Invalid price: does not match expected calculation" });
     }
@@ -1039,7 +1030,6 @@ router.post("/submit", authenticateToken, async (req, res) => {
     await order.save();
     console.log("Order saved:", order._id);
 
-    // Schedule the background task
     setImmediate(() => {
       processPaymentInBackground(order, validatedFilters, totalCount, price, selectedAddons).catch(err => {
         console.error("Uncaught error in background task for order:", order._id, err.message);
@@ -1052,7 +1042,6 @@ router.post("/submit", authenticateToken, async (req, res) => {
       });
     });
 
-    // Adjust the response message based on whether add-ons are selected
     const deliveryDays = selectedAddons.length > 0 ? Math.ceil(totalCount / 1000) : 0;
     const responseMessage = selectedAddons.length > 0
       ? `Payment successful, you will receive a confirmation email shortly. Your data will be delivered within ${deliveryDays} days.`
@@ -1064,7 +1053,6 @@ router.post("/submit", authenticateToken, async (req, res) => {
   }
 });
 
-// Fetch user's order history
 router.get("/my-orders", authenticateToken, async (req, res) => {
   try {
     console.log("Fetching orders for user:", req.user.id);
@@ -1080,7 +1068,7 @@ router.get("/my-orders", authenticateToken, async (req, res) => {
 router.get("/orders", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     console.log("Fetching all orders for admin:", req.user.id);
-    const orders = await Order.find().sort({ createdAt: -1 }); // Fetch all orders, sorted by creation date
+    const orders = await Order.find().sort({ createdAt: -1 });
     console.log(`Found ${orders.length} orders`);
     res.status(200).json(orders);
   } catch (error) {
@@ -1089,7 +1077,6 @@ router.get("/orders", authenticateToken, checkAdminRole, async (req, res) => {
   }
 });
 
-// Add this near the other router.get endpoints in paymentRoutes.js
 router.get("/orders/:orderId", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const { orderId } = req.params;
