@@ -35,7 +35,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
     console.log("Connected database:", mongoose.connection.db.databaseName);
     console.log("Request body:", req.body);
-    const { companyId, orderId, ...details } = req.body;
+    const { companyId, orderId, formData } = req.body;
     const employeeId = req.user.id;
 
     if (!companyId || !/^[0-9a-fA-F]{24}$/.test(companyId)) {
@@ -78,7 +78,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const transformedFormData = { ...details };
+    const transformedFormData = { ...formData }; // Use the nested formData directly
     const decisionMakerFields = [
       "businessDevelopmentManager", "cco", "cdo", "ceo", "cfo", "chro", "cio", "ciso", "cmo",
       "coFounder", "coo", "cpo", "cro", "cso", "cto", "customerSuccessManager", "cxo",
@@ -102,19 +102,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       "vpSales", "vpStrategy", "vpTechnology", "vpHr", "vpProduct",
     ];
 
-    const employeeGrowthFields = ["employeeGrowth6Months", "employeeGrowth1Year", "employeeGrowth2Years"];
-    let employeeGrowth = { period: "", value: "" };
-    for (const field of employeeGrowthFields) {
-      if (transformedFormData[field]) {
-        employeeGrowth = {
-          period: field,
-          value: transformedFormData[field],
-        };
-        delete transformedFormData[field];
-      }
-    }
-    transformedFormData.employeeGrowth = employeeGrowth;
-
+    // Handle decision maker fields
     decisionMakerFields.forEach((field) => {
       if (Array.isArray(transformedFormData[field]) && transformedFormData[field].length > 0) {
         const decisionMaker = transformedFormData[field][0];

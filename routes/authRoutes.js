@@ -101,7 +101,7 @@ router.get(
   (req, res, next) => {
     console.log("Initiating Google OAuth flow");
     console.log("Environment:", process.env.NODE_ENV);
-    console.log("Redirect URI:", process.env.NODE_ENV === "production" ? "http://localhost:5000/api/auth/google/callback" : "http://localhost:5000/api/auth/google/callback");
+    console.log("Redirect URI:", process.env.NODE_ENV === "production" ? "https://dsp-backend.onrender.com/api/auth/google/callback" : "https://dsp-backend.onrender.com/api/auth/google/callback");
     console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
     next();
   },
