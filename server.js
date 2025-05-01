@@ -87,8 +87,8 @@ passport.use(
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: process.env.NODE_ENV === "production"
-        ? "http://localhost:5000/api/users/google/callback"
-        : "http://localhost:5000/api/users/google/callback",
+        ? "https://dsp-backend.onrender.com/api/users/google/callback"
+        : "https://dsp-backend.onrender.com/api/users/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
       try {

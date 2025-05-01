@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api", // Adjust based on your server URL
+  baseURL: "https://dsp-backend.onrender.com/api", // Adjust based on your server URL
 });
 
 const isTokenExpired = (token) => {
@@ -22,7 +22,7 @@ api.interceptors.request.use(
     if (token && isTokenExpired(token)) {
       console.log("Token expired, refreshing...");
       try {
-        const response = await axios.post("http://localhost:5000/api/payment/refresh-token", {}, {
+        const response = await axios.post("https://dsp-backend.onrender.com/api/payment/refresh-token", {}, {
           headers: { Authorization: `Bearer ${token}` },
         });
         token = response.data.token;
@@ -53,7 +53,7 @@ api.interceptors.response.use(
       console.log("Received 403, attempting to refresh token...");
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.post("http://localhost:5000/api/payment/refresh-token", {}, {
+        const response = await axios.post("https://dsp-backend.onrender.com/api/payment/refresh-token", {}, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const newToken = response.data.token;
