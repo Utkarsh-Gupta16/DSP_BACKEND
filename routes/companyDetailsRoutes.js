@@ -23,7 +23,6 @@ const sendEmail = async (options) => {
       from: process.env.EMAIL_USER,
       ...options,
     });
-    console.log("Email sent successfully");
   } catch (error) {
     console.error("Error sending email:", error.message);
     throw error;
@@ -33,25 +32,17 @@ const sendEmail = async (options) => {
 // Submit Company Details (Employee)
 router.post("/submit-company-details", authenticateToken, async (req, res) => {
   try {
-    console.log("Connected database:", mongoose.connection.db.databaseName);
-    console.log("Request body:", req.body);
     const { companyId, orderId, formData } = req.body;
     const employeeId = req.user.id;
 
     if (!companyId || !/^[0-9a-fA-F]{24}$/.test(companyId)) {
-      console.log("Invalid companyId format:", companyId);
       return res.status(400).json({ message: "Invalid companyId format" });
     }
 
     let company = await Company.findOne({ _id: companyId });
-    console.log("Query result with string _id:", company);
-
     if (!company) {
-      console.log("Mongoose findOne failed, trying raw query...");
       const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: companyId });
-      console.log("Raw query result:", rawCompany);
       if (!rawCompany) {
-        console.log("Company not found in raw query for _id:", companyId);
         return res.status(404).json({ message: "Company not found" });
       }
       company = new Company({
@@ -70,7 +61,6 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
     }
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      console.log("Invalid orderId format:", orderId);
       return res.status(400).json({ message: "Invalid orderId format" });
     }
     const order = await Order.findById(orderId);
@@ -78,7 +68,7 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const transformedFormData = { ...formData }; // Use the nested formData directly
+    const transformedFormData = { ...formData };
     const decisionMakerFields = [
       "businessDevelopmentManager", "cco", "cdo", "ceo", "cfo", "chro", "cio", "ciso", "cmo",
       "coFounder", "coo", "cpo", "cro", "cso", "cto", "customerSuccessManager", "cxo",
@@ -102,7 +92,6 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
       "vpSales", "vpStrategy", "vpTechnology", "vpHr", "vpProduct",
     ];
 
-    // Handle decision maker fields
     decisionMakerFields.forEach((field) => {
       if (Array.isArray(transformedFormData[field]) && transformedFormData[field].length > 0) {
         const decisionMaker = transformedFormData[field][0];
@@ -142,10 +131,8 @@ router.post("/submit-company-details", authenticateToken, async (req, res) => {
 });
 
 // Get All Pending Company Details for Admin Approval
-// Get All Pending Company Details for Admin Approval
 router.get("/pending-approvals", authenticateToken, checkAdminRole, async (req, res) => {
   try {
-    console.log("Fetching all pending approvals...");
     const pendingApprovals = await CompanyDetails.find({ status: "pending" })
       .populate({
         path: "companyId",
@@ -159,9 +146,7 @@ router.get("/pending-approvals", authenticateToken, checkAdminRole, async (req, 
       })
       .select("companyId employeeId submittedDate formData orderId");
 
-    console.log("Pending approvals fetched:", pendingApprovals.length);
     if (!pendingApprovals || pendingApprovals.length === 0) {
-      console.log("No pending approvals found, returning empty array");
       return res.status(200).json([]);
     }
 
@@ -191,7 +176,6 @@ router.get("/pending-approvals", authenticateToken, checkAdminRole, async (req, 
       };
     }));
 
-    console.log("Transformed approvals:", transformedApprovals);
     res.status(200).json(transformedApprovals);
   } catch (error) {
     console.error("Error fetching all pending approvals:", error.message, error.stack);
@@ -203,14 +187,11 @@ router.get("/pending-approvals", authenticateToken, checkAdminRole, async (req, 
 router.get("/pending-approvals/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("Entering /pending-approvals/:id route with ID:", id);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      console.log("Invalid ID format:", id);
       return res.status(400).json({ message: "Invalid ID format" });
     }
 
-    console.log("Fetching specific pending approval for ID:", id);
     const approval = await CompanyDetails.findOne({ _id: id, status: "pending" })
       .populate({
         path: "companyId",
@@ -224,10 +205,7 @@ router.get("/pending-approvals/:id", authenticateToken, async (req, res) => {
       })
       .select("companyId employeeId submittedDate formData orderId");
 
-    console.log("Fetched approval:", approval); // Debug to check if approval is retrieved
-
     if (!approval) {
-      console.log("Pending approval not found for ID:", id);
       return res.status(404).json({ message: "Pending approval not found" });
     }
 
@@ -255,7 +233,6 @@ router.get("/pending-approvals/:id", authenticateToken, async (req, res) => {
       orderId: approval.orderId
     };
 
-    console.log("Transformed approval:", transformedApproval);
     res.status(200).json(transformedApproval);
   } catch (error) {
     console.error("Error fetching pending approval:", error.message, error.stack);
@@ -388,43 +365,28 @@ router.get("/employee-history", authenticateToken, async (req, res) => {
 router.get("/employee-history-with-companies", authenticateToken, async (req, res) => {
   try {
     const employeeId = req.user.id;
-    console.log("Fetching history for employeeId:", employeeId);
 
     const history = await CompanyDetails.find({ employeeId })
       .populate({
         path: "companyId",
         model: "Company",
-        select: "_id"
+        select: "_id businessName"
       })
       .select("companyId submittedDate status approvedAt formData");
 
-    console.log("Raw history records:", JSON.stringify(history, null, 2));
-
     const transformedHistory = await Promise.all(history.map(async (record) => {
       let company = record.companyId || { _id: record.companyId };
-      let businessName = `Unknown (ID: ${company._id || 'N/A'})`;
-      let companyId = company._id || "N/A";
+      let businessName = company && company.businessName ? company.businessName : `Unknown (ID: ${company._id || 'N/A'})`;
 
-      console.log("Processing record with companyId:", company._id);
-
-      if (company._id) {
+      if (!company.businessName && company._id) {
         const rawCompany = await mongoose.connection.db.collection("companies").findOne({ _id: new mongoose.Types.ObjectId(company._id) });
-        console.log("Raw company data for ID", company._id, ":", rawCompany);
-
-        if (rawCompany && rawCompany["Business Name"]) {
-          businessName = rawCompany["Business Name"];
-          companyId = rawCompany._id.toString();
-        } else {
-          console.error(`No "Business Name" found for company ID: ${company._id}`);
-        }
-      } else {
-        console.warn(`No company ID found for record: ${record._id}`);
+        businessName = rawCompany && rawCompany["Business Name"] ? rawCompany["Business Name"] : businessName;
       }
 
       return {
         _id: record._id,
         company: {
-          _id: companyId,
+          _id: company._id ? company._id.toString() : "N/A",
           businessName: businessName
         },
         submittedDate: record.submittedDate,
@@ -434,7 +396,6 @@ router.get("/employee-history-with-companies", authenticateToken, async (req, re
       };
     }));
 
-    console.log("Transformed history:", JSON.stringify(transformedHistory, null, 2));
     res.status(200).json(transformedHistory);
   } catch (error) {
     console.error("Error fetching employee history with companies:", error.message, error.stack);

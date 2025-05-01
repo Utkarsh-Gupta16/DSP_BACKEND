@@ -19,21 +19,17 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
   if (!token) {
-    console.log("No token provided in request");
     return res.status(401).json({ message: "No token provided" });
   }
 
   if (!process.env.JWT_SECRET_KEY) {
-    console.log("JWT_SECRET_KEY is not defined in environment variables");
     return res.status(500).json({ message: "JWT_SECRET_KEY is not defined" });
   }
 
   jwt.verify(token, process.env.JWT_SECRET_KEY, (err, decoded) => {
     if (err) {
-      console.log("Token verification failed:", err.message);
       return res.status(403).json({ message: "Invalid or expired token", error: err.message });
     }
-    console.log("Token verified, decoded user:", decoded);
     req.user = decoded; // { id: userId }
     next();
   });
@@ -41,7 +37,6 @@ const authenticateToken = (req, res, next) => {
 
 const checkAdminRole = (req, res, next) => {
   if (req.user.role !== "admin") {
-    console.log("Unauthorized access attempt by non-admin user:", req.user.id);
     return res.status(403).json({ message: "Admin access required" });
   }
   next();
@@ -54,7 +49,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-
 const getNextWorkingDay = (startDate) => {
   const date = new Date(startDate);
   date.setDate(date.getDate() + 1); // Start with the next day
-  // If the next day is Saturday (6) or Sunday (0), move to Monday
   while (date.getDay() === 0 || date.getDay() === 6) {
     date.setDate(date.getDate() + 1);
   }
@@ -66,24 +60,20 @@ router.post("/refresh-token", async (req, res) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
   if (!token) {
-    console.log("No token provided in refresh request");
     return res.status(401).json({ message: "No token provided" });
   }
 
   if (!process.env.JWT_SECRET_KEY) {
-    console.log("JWT_SECRET_KEY is not defined in environment variables");
     return res.status(500).json({ message: "JWT_SECRET_KEY is not defined" });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY, { ignoreExpiration: true });
-    console.log("Token decoded for refresh:", decoded);
     const newToken = jwt.sign(
       { id: decoded.id, role: decoded.role },
       process.env.JWT_SECRET_KEY,
       { expiresIn: process.env.JWT_EXPIRE || "1d" }
     );
-    console.log("New token issued:", newToken);
     res.status(200).json({ token: newToken });
   } catch (error) {
     console.error("Error refreshing token:", error.message);
@@ -95,10 +85,8 @@ router.post("/refresh-token", async (req, res) => {
 router.post("/create-payment-intent", authenticateToken, async (req, res) => {
   try {
     const { totalCount, country, selectedAddons = [] } = req.body;
-    console.log("Creating PaymentIntent for:", { totalCount, country, selectedAddons });
 
     if (!totalCount || totalCount <= 0) {
-      console.log("Invalid totalCount:", totalCount);
       return res.status(400).json({ message: "totalCount must be a positive number" });
     }
 
@@ -121,10 +109,8 @@ router.post("/create-payment-intent", authenticateToken, async (req, res) => {
     const totalPrice = basePrice + addonCost;
 
     const amountInCents = Math.round(totalPrice * 100);
-    console.log("Calculated amount in cents:", amountInCents);
 
     if (amountInCents < (country === "India" ? 30 : 50)) {
-      console.log("Amount too small:", amountInCents);
       return res.status(400).json({ message: "Amount is too small. Minimum is 50 cents for USD or 30 INR for INR." });
     }
 
@@ -134,7 +120,6 @@ router.post("/create-payment-intent", authenticateToken, async (req, res) => {
     } else if (country === "EU") {
       paymentMethodTypes.push("sepa_debit");
     }
-    console.log("Payment method types:", paymentMethodTypes);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
@@ -143,7 +128,6 @@ router.post("/create-payment-intent", authenticateToken, async (req, res) => {
       metadata: { userId: req.user.id, totalCount, selectedAddons: JSON.stringify(selectedAddons) },
     });
 
-    console.log("PaymentIntent created:", paymentIntent.id);
     res.status(200).json({ clientSecret: paymentIntent.client_secret });
   } catch (error) {
     console.error("Error creating payment intent:", error.message);
@@ -156,7 +140,6 @@ router.delete("/admin/delete-tasks/:employeeId", authenticateToken, checkAdminRo
   try {
     const { employeeId } = req.params;
     const result = await Task.deleteMany({ employeeId });
-    console.log(`Deleted ${result.deletedCount} tasks for employee ${employeeId}`);
     res.status(200).json({ message: `Deleted ${result.deletedCount} tasks for employee ${employeeId}` });
   } catch (error) {
     console.error("Error deleting tasks:", error.message);
@@ -168,7 +151,6 @@ router.delete("/admin/delete-tasks/:employeeId", authenticateToken, checkAdminRo
 router.delete("/admin/clear-all-tasks", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const result = await Task.deleteMany({});
-    console.log(`Cleared all tasks. Total deleted: ${result.deletedCount}`);
     res.status(200).json({ message: `Cleared all tasks. Total deleted: ${result.deletedCount}` });
   } catch (error) {
     console.error("Error clearing all tasks:", error.message);
@@ -184,7 +166,6 @@ router.delete("/admin/delete-task/:taskId", authenticateToken, checkAdminRole, a
     if (!result) {
       return res.status(404).json({ message: "Task not found" });
     }
-    console.log(`Deleted task with ID ${taskId}`);
     res.status(200).json({ message: `Deleted task with ID ${taskId}` });
   } catch (error) {
     console.error("Error deleting task:", error.message);
@@ -196,7 +177,6 @@ router.delete("/admin/delete-task/:taskId", authenticateToken, checkAdminRole, a
 router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const { orderId, employeeId, companyCount, startIndex = 0 } = req.body;
-    console.log("Assign task request body:", req.body);
 
     // Validate inputs
     if (!orderId || !employeeId || !companyCount) {
@@ -220,7 +200,7 @@ router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req,
     // Determine the next startIndex based on the maximum endIndex of existing tasks
     const lastTask = await Task.findOne({ orderId }).sort({ endIndex: -1 });
     const nextStartIndex = lastTask ? lastTask.endIndex + 1 : 0;
-    const effectiveStartIndex = Math.max(startIndexNum, nextStartIndex); // Use the higher value
+    const effectiveStartIndex = Math.max(startIndexNum, nextStartIndex);
 
     // Normalize filters
     const normalizedCategories = order.filters.categories?.length > 0
@@ -282,12 +262,11 @@ router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req,
       })),
       status: "pending",
       assignedDate,
-      submitTillDate, // Dynamically calculated
+      submitTillDate,
     });
 
     await newTask.save();
 
-    console.log(`Assigned ${companies.length} companies to employee ${employeeId} with range ${effectiveStartIndex + 1} to ${endIndex + 1}. Submit till date: ${submitTillDate}`);
     res.status(200).json({ task: newTask });
   } catch (error) {
     console.error("Error assigning task:", error.message, error.stack);
@@ -297,7 +276,6 @@ router.post("/admin/assign-task", authenticateToken, checkAdminRole, async (req,
 
 router.get("/admin/assigned-companies", authenticateToken, checkAdminRole, async (req, res) => {
   try {
-    console.log("Fetching assigned companies for admin:", req.user.id);
     const assignedTasks = await Task.aggregate([
       {
         $group: {
@@ -311,7 +289,6 @@ router.get("/admin/assigned-companies", authenticateToken, checkAdminRole, async
         $sort: { totalCompaniesAssigned: -1 },
       },
     ]);
-    console.log("Assigned companies data per order:", assignedTasks);
     res.status(200).json(assignedTasks);
   } catch (error) {
     console.error("Error fetching assigned companies:", error.message);
@@ -321,13 +298,11 @@ router.get("/admin/assigned-companies", authenticateToken, checkAdminRole, async
 
 router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async (req, res) => {
   try {
-    console.log("Fetching pending approvals for admin:", req.user.id);
     const pendingApprovals = await CompanyDetails.find({ status: "pending" })
       .populate("companyId")
       .populate("employeeId", "name email")
       .populate("orderId", "userId email userName")
       .lean();
-    console.log("Fetched pending approvals:", pendingApprovals);
     res.status(200).json(pendingApprovals);
   } catch (error) {
     console.error("Error fetching pending approvals:", error.message);
@@ -335,20 +310,7 @@ router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async 
   }
 });
 
-router.get("/admin/pending-approvals", authenticateToken, checkAdminRole, async (req, res) => {
-  try {
-    console.log("Fetching pending approvals for admin:", req.user.id);
-    const pendingApprovals = await CompanyDetails.find({ status: "pending" })
-      .populate("companyId")
-      .populate("employeeId", "name email")
-      .lean();
-    console.log("Fetched pending approvals:", pendingApprovals);
-    res.status(200).json(pendingApprovals);
-  } catch (error) {
-    console.error("Error fetching pending approvals:", error.message);
-    res.status(500).json({ message: "Failed to fetch pending approvals", error: error.message });
-  }
-});
+// Note: There was a duplicate route for "/admin/pending-approvals". I've removed the duplicate.
 
 router.put("/admin/approve-company-details/:companyDetailId", authenticateToken, checkAdminRole, async (req, res) => {
   try {
@@ -372,8 +334,6 @@ router.put("/admin/approve-company-details/:companyDetailId", authenticateToken,
       return res.status(404).json({ message: "Approval record not found" });
     }
 
-    console.log(`Updated approval status for ${companyDetailId} to ${status}`);
-
     if (status === "rejected" && returnToEmployee) {
       const task = await Task.findOne({ companyIds: updatedApproval.companyId });
       if (task) {
@@ -384,7 +344,6 @@ router.put("/admin/approve-company-details/:companyDetailId", authenticateToken,
           subject: "Company Data Rejected - Please Refill",
           text: `Dear ${updatedApproval.employeeId.name},\n\nThe company data for ${updatedApproval.companyId.businessName} (ID: ${updatedApproval.companyId._id}) has been rejected. Please refill the form and resubmit it.\n\nBest regards,\nAdmin Team`,
         });
-        console.log(`Notification sent to employee ${employeeEmail} for rejected company ${companyDetailId}`);
       }
     }
 
@@ -407,9 +366,7 @@ router.get("/task/:taskId", authenticateToken, async (req, res) => {
 
 router.get("/admin/tasks", authenticateToken, checkAdminRole, async (req, res) => {
   try {
-    console.log("Fetching all tasks for admin:", req.user.id);
     const tasks = await Task.find().lean();
-    console.log("Fetched tasks:", tasks);
     res.status(200).json(tasks);
   } catch (error) {
     console.error("Error fetching tasks:", error.message);
@@ -420,7 +377,6 @@ router.get("/admin/tasks", authenticateToken, checkAdminRole, async (req, res) =
 router.get("/employee/companies", authenticateToken, async (req, res) => {
   try {
     const { taskId } = req.query;
-    console.log("Fetching companies for employee:", req.user.id, "taskId:", taskId);
 
     let tasksQuery = { employeeId: req.user.id };
     if (taskId) {
@@ -429,7 +385,6 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
 
     const tasks = await Task.find(tasksQuery).populate("orderId");
     if (!tasks || tasks.length === 0) {
-      console.log("No tasks found for employee:", req.user.id);
       return res.status(200).json([]);
     }
 
@@ -452,28 +407,24 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
       if (order.filters.country?.value) query.Country = order.filters.country.value;
       if (order.filters.state?.value) query.State = order.filters.state.value;
       if (order.filters.city?.value) query.City = order.filters.city.value;
-    
-      console.log("Company query for task", task._id, ":", query);
-    
+
       const startIndex = task.startIndex || 0;
       const companyCount = task.companyCount || 0;
       if (startIndex < 0 || companyCount <= 0) {
-        console.warn("Invalid startIndex or companyCount for task", task._id, { startIndex, companyCount });
         return { taskId: task._id, companies: [], range: [0, 0] };
       }
-    
+
       let companies;
       try {
         companies = await Company.find(query)
           .skip(startIndex)
           .limit(companyCount)
           .lean();
-        console.log("Fetched companies for task", task._id, "Count:", companies.length, "Sample:", companies.slice(0, 2));
       } catch (dbError) {
         console.error("Database error fetching companies for task", task._id, dbError.message);
         return { taskId: task._id, companies: [], range: [startIndex + 1, startIndex] };
       }
-    
+
       const companiesWithDetails = companies.map(company => {
         const companyData = task.companyData || [];
         const matchingData = companyData.find(cd => cd.companyId && cd.companyId.toString() === company._id.toString());
@@ -482,7 +433,7 @@ router.get("/employee/companies", authenticateToken, async (req, res) => {
           companyDetails: matchingData?.companyDetails || {}
         };
       });
-    
+
       return { taskId: task._id, companies: companiesWithDetails, range: [startIndex + 1, startIndex + companies.length] };
     });
 
@@ -544,11 +495,7 @@ router.post("/count-companies", authenticateToken, async (req, res) => {
       ...(query.city?.value && { City: query.city.value }),
     };
 
-    console.log("Count-companies query:", JSON.stringify(normalizedQuery, null, 2));
-
     const count = await Company.countDocuments(normalizedQuery);
-    console.log("Counted companies:", count);
-
     res.status(200).json({ count });
   } catch (error) {
     console.error("Error counting companies:", error.message);
@@ -604,7 +551,6 @@ router.put("/admin/update-order-status/:orderId", authenticateToken, checkAdminR
     if (!updatedOrder) {
       return res.status(404).json({ message: "Order not found" });
     }
-    console.log(`Updated order ${orderId} status to ${status}`);
     res.status(200).json({ message: "Order status updated successfully", order: updatedOrder });
   } catch (error) {
     console.error("Error updating order status:", error.message);
@@ -625,8 +571,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
   const __dirname = path.dirname(__filename);
 
   try {
-    console.log("Starting background task for order:", order._id);
-
     if (selectedAddons.length > 0) {
       const deliveryDays = Math.ceil(totalCount / 1000);
       const emailSubject = "Payment Confirmation - Data Delivery in Progress";
@@ -637,8 +581,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
         text: emailText,
       });
 
-      console.log("Notification email sent to:", order.email);
-
       const adminEmailSubject = "New Order with Add-Ons - Action Required";
       const adminEmailText = `Dear Admin,\n\nA new order with add-ons has been placed. Please prepare the data accordingly.\n\nOrder Details:\n- Order ID: ${order._id}\n- User Email: ${order.email}\n- User Name: ${order.userName || "N/A"}\n- Total Companies: ${totalCount}\n- Total Price: $${price}\n- Selected Add-Ons: ${selectedAddons.join(", ") || "None"}\n- Categories: ${filters.categories?.join(", ") || "None"}\n- Subcategories: ${filters.subcategories?.join(", ") || "None"}\n- Sub-Subcategories: ${filters.subSubcategories?.join(", ") || "None"}\n- Delivery Days: ${deliveryDays}\n\nPlease ensure the data is prepared and delivered within ${deliveryDays} days.\n\nBest regards,\nData Selling Team`;
       await sendEmail({
@@ -647,10 +589,7 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
         text: adminEmailText,
       });
 
-      console.log("Admin notification email sent to:", process.env.ADMIN_EMAIL);
-
       await Order.findByIdAndUpdate(order._id, { status: "pending_delivery" });
-      console.log("Order status updated to pending_delivery for order:", order._id);
     } else {
       const orConditions = [];
       if (filters.categories?.length > 0) {
@@ -741,15 +680,12 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       }
 
       if (Object.keys(matchStage).length === 0) {
-        console.log("No filters provided, cannot fetch companies");
         await Order.findByIdAndUpdate(order._id, {
           status: "failed",
           error: "No filters provided to fetch companies.",
         });
         return;
       }
-
-      console.log("Validating count with match stage:", JSON.stringify(matchStage, null, 2));
 
       const countResult = await Company.aggregate([
         { $match: matchStage },
@@ -758,10 +694,8 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       ]);
 
       const validatedCount = countResult.length > 0 ? countResult[0].totalCount : 0;
-      console.log("Validated count:", validatedCount);
 
       if (Math.abs(validatedCount - totalCount) > 100) {
-        console.log(`Mismatch between validated count (${validatedCount}) and totalCount (${totalCount})`);
         await Order.findByIdAndUpdate(order._id, {
           status: "failed",
           error: `Mismatch between validated count (${validatedCount}) and expected count (${totalCount}). A refund will be issued.`,
@@ -769,11 +703,9 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
 
         if (order.paymentDetails?.paymentIntentId) {
           try {
-            console.log("Initiating refund for PaymentIntent:", order.paymentDetails.paymentIntentId);
             await stripe.refunds.create({
               payment_intent: order.paymentDetails.paymentIntentId,
             });
-            console.log("Refund initiated successfully");
           } catch (refundError) {
             console.error("Error initiating refund:", refundError.message);
           }
@@ -787,7 +719,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
           text: emailText,
         });
 
-        console.log("Failure email sent to:", order.email);
         return;
       }
 
@@ -813,7 +744,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       const json2csvParser = new Parser({ fields });
       const header = json2csvParser.parse([]).split("\n")[0] + "\n";
 
-      console.log("Streaming companies with match stage:", JSON.stringify(matchStage, null, 2));
       const cursor = Company.aggregate([
         { $match: matchStage },
         { $group: { _id: "$_id", doc: { $first: "$$ROOT" } } },
@@ -823,7 +753,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       let companyCount = 0;
       const tempDir = path.join(__dirname, "../temp");
       if (!fs.existsSync(tempDir)) {
-        console.log("Creating temp directory:", tempDir);
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
@@ -844,7 +773,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
 
         if (currentFileSize + rowSize > maxFileSize) {
           await closeWriteStream(currentWriteStream);
-          console.log(`Closed CSV file: ${currentFilePath}`);
           currentFileIndex++;
           currentFilePath = path.join(tempDir, `companies_${order._id}_part${currentFileIndex}.csv`);
           currentWriteStream = fs.createWriteStream(currentFilePath);
@@ -858,9 +786,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       }
 
       await closeWriteStream(currentWriteStream);
-      console.log(`Closed CSV file: ${currentFilePath}`);
-      console.log(`Processed ${companyCount} companies`);
-      console.log(`Split into ${splitFiles.length} CSV files:`, splitFiles);
 
       for (const csvFile of splitFiles) {
         if (!fs.existsSync(csvFile)) {
@@ -878,7 +803,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
 
         const zipStats = fs.statSync(zipFilePath);
         const zipSize = zipStats.size;
-        console.log(`ZIP file ${zipFilePath} size: ${(zipSize / (1024 * 1024)).toFixed(2)} MB`);
 
         if (zipSize > maxFileSize) {
           throw new Error(`ZIP file ${zipFilePath} exceeds 18 MB limit: ${(zipSize / (1024 * 1024)).toFixed(2)} MB`);
@@ -892,7 +816,6 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
         const partNumber = i + 1;
         const totalParts = zipFiles.length;
 
-        console.log(`Sending email ${partNumber} of ${totalParts} to:`, order.email);
         const emailSubject = `Your Purchased Company Data - Part ${partNumber} of ${totalParts}`;
         const emailText = `Dear ${order.userName || "Customer"},\n\nThank you for your purchase! Your company data has been split into ${totalParts} parts due to email size limits. This email contains Part ${partNumber} of ${totalParts}.\n\nPlease download and unzip the attached file. Once you have all parts, you can combine them into a single CSV file if needed. Instructions:\n1. Download all parts.\n2. Unzip each part to get the CSV files.\n3. Combine the CSV files (excluding headers from parts 2 onward) into a single file.\n\nTotal Companies: ${companyCount}\nTotal Price: $${price}\nSelected Add-Ons: ${selectedAddons.join(", ") || "None"}\n\nIf you have any questions, please contact support.\n\nBest regards,\nYour Team`;
         await sendEmail({
@@ -908,22 +831,18 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
         });
       }
 
-      console.log("Cleaning up temporary files...");
       for (const csvFile of splitFiles) {
         if (fs.existsSync(csvFile)) {
           fs.unlinkSync(csvFile);
-          console.log(`Deleted CSV file: ${csvFile}`);
         }
       }
       for (const zipFile of zipFiles) {
         if (fs.existsSync(zipFile)) {
           fs.unlinkSync(zipFile);
-          console.log(`Deleted ZIP file: ${zipFile}`);
         }
       }
 
       await Order.findByIdAndUpdate(order._id, { status: "completed" });
-      console.log("Background task completed for order:", order._id);
     }
   } catch (error) {
     console.error("Error in background task for order:", order._id, error.message);
@@ -931,11 +850,9 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
 
     if (order.paymentDetails?.paymentIntentId) {
       try {
-        console.log("Initiating refund for PaymentIntent:", order.paymentDetails.paymentIntentId);
         await stripe.refunds.create({
           payment_intent: order.paymentDetails.paymentIntentId,
         });
-        console.log("Refund initiated successfully");
       } catch (refundError) {
         console.error("Error initiating refund:", refundError.message);
       }
@@ -948,18 +865,14 @@ const processPaymentInBackground = async (order, filters, totalCount, price, sel
       subject: emailSubject,
       text: emailText,
     });
-
-    console.log("Failure email sent to:", order.email);
   }
 };
 
 router.post("/submit", authenticateToken, async (req, res) => {
   try {
-    console.log("Received /api/payment/submit request:", req.body);
     const { filters, totalCount, price, paymentIntentId, selectedAddons = [] } = req.body;
 
     if (!totalCount || !price || !paymentIntentId) {
-      console.log("Missing required fields:", { totalCount, price, paymentIntentId });
       return res.status(400).json({ message: "totalCount, price, and paymentIntentId are required" });
     }
 
@@ -982,24 +895,18 @@ router.post("/submit", authenticateToken, async (req, res) => {
     const expectedPrice = parseFloat((expectedBasePrice + expectedAddonCost).toFixed(2));
     const receivedPrice = parseFloat(price);
     if (Math.abs(expectedPrice - receivedPrice) > 0.5) {
-      console.log("Price mismatch:", { expectedPrice, receivedPrice });
       return res.status(400).json({ message: "Invalid price: does not match expected calculation" });
     }
 
-    console.log("Retrieving PaymentIntent:", paymentIntentId);
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.status !== "succeeded") {
-      console.log("PaymentIntent not successful:", paymentIntent.status);
       return res.status(400).json({ message: "Payment not successful" });
     }
 
-    console.log("Fetching user with ID:", req.user.id);
     const user = await User.findById(req.user.id);
     if (!user) {
-      console.log("User not found for ID:", req.user.id);
       return res.status(404).json({ message: "User not found" });
     }
-    console.log("User found:", user.email);
 
     const defaultFilters = {
       categories: [],
@@ -1028,7 +935,6 @@ router.post("/submit", authenticateToken, async (req, res) => {
     });
 
     await order.save();
-    console.log("Order saved:", order._id);
 
     setImmediate(() => {
       processPaymentInBackground(order, validatedFilters, totalCount, price, selectedAddons).catch(err => {
@@ -1055,9 +961,7 @@ router.post("/submit", authenticateToken, async (req, res) => {
 
 router.get("/my-orders", authenticateToken, async (req, res) => {
   try {
-    console.log("Fetching orders for user:", req.user.id);
     const orders = await Order.find({ userId: req.user.id }).sort({ createdAt: -1 });
-    console.log(`Found ${orders.length} orders`);
     res.status(200).json(orders);
   } catch (error) {
     console.error("Error fetching orders:", error.message);
@@ -1067,9 +971,7 @@ router.get("/my-orders", authenticateToken, async (req, res) => {
 
 router.get("/orders", authenticateToken, checkAdminRole, async (req, res) => {
   try {
-    console.log("Fetching all orders for admin:", req.user.id);
     const orders = await Order.find().sort({ createdAt: -1 });
-    console.log(`Found ${orders.length} orders`);
     res.status(200).json(orders);
   } catch (error) {
     console.error("Error fetching orders:", error.message);
@@ -1080,12 +982,10 @@ router.get("/orders", authenticateToken, checkAdminRole, async (req, res) => {
 router.get("/orders/:orderId", authenticateToken, checkAdminRole, async (req, res) => {
   try {
     const { orderId } = req.params;
-    console.log("Fetching order with ID:", orderId);
     const order = await Order.findById(orderId).populate("filters");
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
-    console.log("Order fetched:", order);
     res.status(200).json(order);
   } catch (error) {
     console.error("Error fetching order:", error.message);
